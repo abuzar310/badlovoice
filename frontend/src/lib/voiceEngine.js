@@ -40,6 +40,11 @@ export async function renderFileLocally(file, { pitch = 0, formant = 0, effects 
     decodeCtx.close().catch(() => {});
   }
 
+  // A whole file is rendered in memory; an hour of audio can exhaust a phone.
+  if (decoded.duration > 30 * 60) {
+    throw new Error('That file is longer than 30 minutes. Trim it and try again.');
+  }
+
   const sampleRate = decoded.sampleRate;
   // Leave room for echo / reverb tails to ring out.
   const tail = effects?.echo?.enabled || effects?.reverb?.enabled ? 2.5 : 0.25;

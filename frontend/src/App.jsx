@@ -234,6 +234,11 @@ export default function App() {
       formant: Number(voice.formant) || 0,
       effects,
     });
+    pipeline.setCaptureOptions?.({
+      noiseSuppression: Boolean(extras.noiseSuppression),
+      echoCancellation: Boolean(extras.echoCancellation),
+      autoGainControl: Boolean(extras.autoGain),
+    });
     pipeline.setGateParams?.({
       enabled: Boolean(extras.blockBackground),
       thresholdDb: Number(extras.vadThresholdDb) || -56,
@@ -615,11 +620,11 @@ export default function App() {
               Converter
             </p>
             <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">
-              Offline file conversion
+              Convert an audio file
             </h1>
             <p className="mt-1 text-sm text-[color:var(--muted)]">
-              Uses your current Studio pitch, formant and effects. Runs in your browser — no server
-              needed unless you want an AI model.
+              Change the voice in a recording you already have. Uses the voice you set up on the
+              Studio tab.
             </p>
           </header>
           <FileConverter

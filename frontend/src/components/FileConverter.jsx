@@ -1,18 +1,24 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { convertFile } from '../lib/api';
 import { countActiveEffects } from '../lib/effects';
 import { renderFileLocally } from '../lib/voiceEngine';
 
-const ACCEPTED = '.wav,.mp3,.flac,.ogg,.m4a,.aiff';
+const ACCEPTED = '.wav,.mp3,.flac,.ogg,.m4a,.aiff,audio/*';
 
 function formatSize(bytes) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Offline conversion. Without an AI model the file is rendered right here in
-// the browser by the built-in engine (works on the hosted site and the APK).
-// With a model active it goes through the server pipeline instead.
+function signed(value) {
+  const n = Number(value) || 0;
+  return `${n > 0 ? '+' : ''}${n}`;
+}
+
+// Converts a whole audio file with the current Studio voice. Without an AI
+// model the file is rendered here in the browser by the built-in engine (works
+// on the hosted site and in the Android app). With a model active it can go
+// through the server instead.
 export default function FileConverter({ voice, effects, activeModel, gate }) {
   const [file, setFile] = useState(null);
   const [useModel, setUseModel] = useState(true);
@@ -20,9 +26,9 @@ export default function FileConverter({ voice, effects, activeModel, gate }) {
   const [result, setResult] = useState(null); // {url, name, size}
   const [error, setError] = useState(null);
   const [dragActive, setDragActive] = useState(false);
-  const fileInputRef = useRef(null);
 
   const fxCount = countActiveEffects(effects, voice.formant);
+  const viaModel = useModel && Boolean(activeModel);
 
   const pickFile = (candidate) => {
     if (!candidate) return;
@@ -39,52 +45,41 @@ export default function FileConverter({ voice, effects, activeModel, gate }) {
     setConverting(true);
     setError(null);
     try {
-      const blob =
-        useModel && activeModel
-          ? await convertFile(file, {
-              pitchShift: voice.pitch,
-              formantShift: voice.formant,
-              f0Method: voice.f0Method,
-              effects,
-              useModel: true,
-            })
-          : await renderFileLocally(file, {
-              pitch: Number(voice.pitch) || 0,
-              formant: Number(voice.formant) || 0,
-              effects,
-              gate,
-            });
+      const blob = viaModel
+        ? await convertFile(file, {
+            pitchShift: voice.pitch,
+            formantShift: voice.formant,
+            f0Method: voice.f0Method,
+            effects,
+            useModel: true,
+          })
+        : await renderFileLocally(file, {
+            pitch: Number(voice.pitch) || 0,
+            formant: Number(voice.formant) || 0,
+            effects,
+            gate,
+          });
       const name = `${file.name.replace(/\.[^.]+$/, '')}_converted.wav`;
       setResult((prev) => {
         if (prev?.url) URL.revokeObjectURL(prev.url);
         return { url: URL.createObjectURL(blob), name, size: blob.size };
       });
     } catch (err) {
-      setError(err.message || 'Conversion failed');
+      setError(err.message || 'Could not convert that file.');
     } finally {
       setConverting(false);
     }
   };
 
   return (
-    <section className="panel p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="panel-kicker">File Converter</p>
-          <h2 className="panel-title">Offline voice conversion</h2>
-        </div>
-        <span className="rounded border border-[color:var(--line)] bg-[color:var(--surface)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted)]">
-          Uses current studio settings
-        </span>
-      </div>
-
-      <p className="mt-2 text-sm text-[color:var(--muted)]">
-        Render a whole audio file through {useModel && activeModel ? 'the active model and ' : ''}the
-        effect chain — pitch {voice.pitch > 0 ? '+' : ''}{voice.pitch} st,
-        formant {voice.formant > 0 ? '+' : ''}{voice.formant} st, {fxCount} effect{fxCount === 1 ? '' : 's'}.
+    <section className="panel p-5 sm:p-6">
+      <p className="text-sm text-[color:var(--muted)]">
+        Voice in use: pitch {signed(voice.pitch)} st, formant {signed(voice.formant)} st,{' '}
+        {fxCount} effect{fxCount === 1 ? '' : 's'}
+        {viaModel ? `, AI model ${activeModel}` : ''}. Change it on the Studio tab.
       </p>
 
-      <div
+      <label
         onDrop={(event) => {
           event.preventDefault();
           setDragActive(false);
@@ -98,104 +93,110 @@ export default function FileConverter({ voice, effects, activeModel, gate }) {
           event.preventDefault();
           setDragActive(false);
         }}
-        onClick={() => fileInputRef.current?.click()}
-        className={`mt-5 cursor-pointer rounded-md border border-dashed p-8 text-center transition-all duration-200 ${
+        className={`mt-4 block cursor-pointer rounded-2xl border border-dashed p-8 text-center transition-colors duration-200 focus-within:border-[color:var(--accent)] focus-within:ring-2 focus-within:ring-[color:var(--accent)]/30 ${
           dragActive
-            ? 'border-[color:var(--ink-text)]/35 bg-[color:var(--surface)] drag-active'
-            : 'border-white/[0.12] bg-[color:var(--surface)] hover:border-[color:var(--ink-text)]/25 hover:bg-[color:var(--surface)]'
+            ? 'border-[color:var(--accent)] bg-[color:var(--accent)]/10 drag-active'
+            : 'border-[color:var(--ink-text)]/25 bg-[color:var(--surface)] hover:border-[color:var(--ink-text)]/45'
         }`}
       >
         <input
-          ref={fileInputRef}
           type="file"
           accept={ACCEPTED}
           onChange={(event) => {
             pickFile(event.target.files?.[0]);
-            if (fileInputRef.current) fileInputRef.current.value = '';
+            event.target.value = '';
           }}
-          className="hidden"
+          className="sr-only"
         />
-        <svg className="mx-auto mb-3 h-9 w-9 text-[color:var(--muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          className="mx-auto mb-3 h-9 w-9 text-[color:var(--muted)]"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <path d="M9 18V5l12-2v13" />
           <circle cx="6" cy="18" r="3" />
           <circle cx="18" cy="16" r="3" />
         </svg>
         {file ? (
           <>
-            <p className="text-sm font-medium text-[color:var(--ink-text)]">{file.name}</p>
-            <p className="mt-1 text-xs text-[color:var(--muted)]">{formatSize(file.size)} · click to choose another file</p>
+            <span className="block break-all text-sm font-medium text-[color:var(--ink-text)]">
+              {file.name}
+            </span>
+            <span className="mt-1 block text-xs text-[color:var(--muted)]">
+              {formatSize(file.size)} · choose another file
+            </span>
           </>
         ) : (
           <>
-            <p className="text-sm font-medium text-[color:var(--ink-text)]">
-              {dragActive ? 'Drop the audio file here' : 'Drop an audio file or click to browse'}
-            </p>
-            <p className="mt-1 text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">
-              wav · mp3 · flac · ogg · m4a
-            </p>
+            <span className="block text-sm font-medium text-[color:var(--ink-text)]">
+              {dragActive ? 'Drop the file here' : 'Choose an audio file, or drop one here'}
+            </span>
+            <span className="mt-1 block text-xs text-[color:var(--muted)]">
+              WAV, MP3, M4A, OGG or FLAC
+            </span>
           </>
         )}
-      </div>
+      </label>
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
-        <label className={`flex items-center gap-2.5 text-sm ${activeModel ? 'text-[color:var(--ink-text)]' : 'text-[color:var(--muted)]'}`}>
-          <input
-            type="checkbox"
-            checked={useModel && Boolean(activeModel)}
-            disabled={!activeModel}
-            onChange={(event) => setUseModel(event.target.checked)}
-            className="h-4 w-4 accent-zinc-300"
-          />
-          Run through active model
-          <span className="text-xs text-[color:var(--muted)]">
-            {activeModel ? `(${activeModel})` : '(none active — rendering on this device)'}
-          </span>
-        </label>
+      <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        {activeModel ? (
+          <label className="flex items-center gap-2.5 text-sm text-[color:var(--ink-text)]">
+            <input
+              type="checkbox"
+              checked={useModel}
+              onChange={(event) => setUseModel(event.target.checked)}
+              className="h-4 w-4 accent-[color:var(--accent)]"
+            />
+            <span className="min-w-0 break-words">Use the AI model ({activeModel})</span>
+          </label>
+        ) : (
+          <p className="text-sm text-[color:var(--muted)]">Converts on this device. Nothing is uploaded.</p>
+        )}
 
         <button
+          type="button"
           onClick={handleConvert}
           disabled={!file || converting}
-          className="rounded-md bg-zinc-100 px-6 py-3 text-sm font-bold uppercase tracking-[0.14em] text-zinc-900 transition hover:bg-white disabled:cursor-not-allowed disabled:bg-[color:var(--surface)] disabled:text-[color:var(--muted)]"
+          className="btn-primary sm:w-auto sm:min-w-[12rem]"
         >
-          {converting ? (
-            <span className="flex items-center gap-2">
-              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Converting…
-            </span>
-          ) : (
-            'Convert'
-          )}
+          {converting ? 'Converting…' : 'Convert file'}
         </button>
       </div>
 
-      {converting && (
-        <p className="mt-3 text-xs text-[color:var(--muted)]">
-          {useModel && activeModel
-            ? 'Long files can take a while — the whole file runs through the model on the server.'
-            : 'Rendering on this device — usually much faster than realtime.'}
+      {converting && viaModel && (
+        <p className="mt-3 text-xs text-[color:var(--muted)]" role="status">
+          Long files take a while: the whole file runs through the model on the server.
         </p>
       )}
 
       {error && (
-        <div className="mt-4 rounded-md border border-[color:var(--danger)]/25 bg-[color:var(--danger)]/10 p-4">
+        <div
+          className="mt-4 rounded-2xl border border-[color:var(--danger)]/30 bg-[color:var(--danger)]/10 p-3.5"
+          role="alert"
+        >
           <p className="text-sm text-[color:var(--danger-soft)]">{error}</p>
         </div>
       )}
 
       {result && (
-        <div className="mt-5 rounded-md border border-emerald-300/25 bg-emerald-400/[0.05] p-4">
+        <div className="mt-5 rounded-2xl border border-[color:var(--success)]/35 bg-[color:var(--success)]/10 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-medium text-emerald-100">
-              {result.name} <span className="text-xs text-emerald-200/60">({formatSize(result.size)})</span>
+            <p className="min-w-0 break-all text-sm font-medium text-[color:var(--ink-text)]">
+              {result.name}{' '}
+              <span className="text-xs font-normal text-[color:var(--muted)]">
+                {formatSize(result.size)}
+              </span>
             </p>
-            <a href={result.url} download={result.name} className="chip-button !normal-case">
-              ↓ Download WAV
+            <a href={result.url} download={result.name} className="chip-button !text-[color:var(--ink-text)]">
+              Download WAV
             </a>
           </div>
-          <audio controls src={result.url} className="mt-3 h-9 w-full" />
+          <audio controls src={result.url} className="mt-3 h-10 w-full" />
         </div>
       )}
     </section>

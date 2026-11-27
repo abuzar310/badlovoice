@@ -34,6 +34,17 @@ export default function useAudioPipeline(wsHook) {
   const engineNodeRef = useRef(null);
   const engineGainRef = useRef(null);
   const speakerGainRef = useRef(null);
+  const monitorGainRef = useRef(null);
+  const monitorElRef = useRef(null);
+  // True while the changed voice is routed to a device the user picked
+  // (e.g. a virtual cable feeding Discord) rather than the default speakers.
+  const sinkAppliedRef = useRef(false);
+  const [sendingToDevice, setSendingToDevice] = useState(false);
+  const captureOptionsRef = useRef({
+    noiseSuppression: false,
+    echoCancellation: false,
+    autoGainControl: false,
+  });
   const inputAnalyserRef = useRef(null);
   const outputAnalyserRef = useRef(null);
   const animFrameRef = useRef(null);
@@ -58,7 +69,12 @@ export default function useAudioPipeline(wsHook) {
   //   local — the in-browser engine is the voice (no server needed).
   //   rvc   — the server model is the voice; the engine only tracks pitch.
   // Exactly one source is audible, so the two are never doubled up.
-  // "Hear myself" only mutes the speakers; meters and the recorder still get audio.
+  // Output rules:
+  //   default device  — "Hear myself" switches the speakers on and off.
+  //   a chosen device — the voice always goes there (that is why it was
+  //                     chosen); "Hear myself" adds a copy on the default
+  //                     speakers so you can monitor what the cable receives.
+  // Meters and the recorder tap the bus before either switch.
   const applyOutputGains = useCallback(() => {
     const ctx = audioContextRef.current;
     const now = ctx?.currentTime ?? 0;
@@ -70,7 +86,15 @@ export default function useAudioPipeline(wsHook) {
     };
     ramp(engineGainRef.current, rvc ? 0 : 1);
     ramp(playbackGainRef.current, rvc ? 1.4 : 0);
-    ramp(speakerGainRef.current, hearMyselfRef.current ? 1 : 0);
+    const hear = hearMyselfRef.current;
+    const toDevice = sinkAppliedRef.current;
+    ramp(speakerGainRef.current, toDevice || hear ? 1 : 0);
+    ramp(monitorGainRef.current, toDevice && hear ? 1 : 0);
+    const monitorEl = monitorElRef.current;
+    if (monitorEl) {
+      if (toDevice && hear) monitorEl.play().catch(() => {});
+      else monitorEl.pause();
+    }
     engineNodeRef.current?.port.postMessage({ ...engineParamsRef.current, enabled: !rvc });
   }, []);
 
@@ -149,7 +173,15 @@ export default function useAudioPipeline(wsHook) {
     [applyOutputGains]
   );
 
-  /** Mute/unmute speaker preview. Mic capture + voice send keep working. */
+  /**
+   * Browser mic processing used on the next Start: noise suppression, echo
+   * cancellation and automatic gain. All off by default (raw mic).
+   */
+  const setCaptureOptions = useCallback((partial) => {
+    captureOptionsRef.current = { ...captureOptionsRef.current, ...partial };
+  }, []);
+
+  /** Speakers on/off (or monitor on/off when sending to a chosen device). */
   const setHearMyself = useCallback(
     (on) => {
       const next = Boolean(on);
@@ -185,14 +217,21 @@ export default function useAudioPipeline(wsHook) {
           chunk_size: CHUNK_SIZE,
         });
 
-        if (outputDeviceId && audioContext.setSinkId) {
-          await audioContext.setSinkId(outputDeviceId).catch(() => {});
+        sinkAppliedRef.current = false;
+        if (outputDeviceId && outputDeviceId !== 'default' && audioContext.setSinkId) {
+          try {
+            await audioContext.setSinkId(outputDeviceId);
+            sinkAppliedRef.current = true;
+          } catch {
+            // Device vanished or the browser refused — fall back to the default.
+          }
         }
+        setSendingToDevice(sinkAppliedRef.current);
 
         const audioConstraints = {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
+          echoCancellation: Boolean(captureOptionsRef.current.echoCancellation),
+          noiseSuppression: Boolean(captureOptionsRef.current.noiseSuppression),
+          autoGainControl: Boolean(captureOptionsRef.current.autoGainControl),
           channelCount: 1,
         };
         let stream;
@@ -334,20 +373,37 @@ export default function useAudioPipeline(wsHook) {
         outputAnalyser.connect(speakerGain);
         speakerGain.connect(audioContext.destination);
 
+        if (sinkAppliedRef.current) {
+          // Second output on the default device for monitoring.
+          const monitorGain = audioContext.createGain();
+          monitorGain.gain.value = 0;
+          monitorGainRef.current = monitorGain;
+          const monitorDest = audioContext.createMediaStreamDestination();
+          outputAnalyser.connect(monitorGain);
+          monitorGain.connect(monitorDest);
+          const monitorEl = new Audio();
+          monitorEl.srcObject = monitorDest.stream;
+          monitorElRef.current = monitorEl;
+        }
+
         applyOutputGains();
 
-        const recProc = audioContext.createScriptProcessor(4096, 1, 1);
+        // Recorder tap. Chunks are cut on the audio thread, so a busy UI
+        // thread can delay them but never drops samples from a take.
+        const recProc = new AudioWorkletNode(audioContext, 'capture-processor', {
+          ...mono,
+          processorOptions: { chunkSize: 4096 },
+        });
         recordProcessorRef.current = recProc;
         const recSink = audioContext.createGain();
         recSink.gain.value = 0;
         limiter.connect(recProc);
         recProc.connect(recSink);
         recSink.connect(audioContext.destination);
-        recProc.onaudioprocess = (event) => {
-          if (!recordingRef.current) return;
-          const copy = new Float32Array(event.inputBuffer.getChannelData(0));
-          recordChunksRef.current.push(copy);
-          recordSamplesRef.current += copy.length;
+        recProc.port.onmessage = (event) => {
+          if (!recordingRef.current || !(event.data instanceof Float32Array)) return;
+          recordChunksRef.current.push(event.data);
+          recordSamplesRef.current += event.data.length;
         };
 
         seqNumRef.current = 0;
@@ -460,6 +516,7 @@ export default function useAudioPipeline(wsHook) {
       engineNodeRef,
       engineGainRef,
       speakerGainRef,
+      monitorGainRef,
       inputAnalyserRef,
       outputAnalyserRef,
       recordProcessorRef,
@@ -470,8 +527,17 @@ export default function useAudioPipeline(wsHook) {
       } catch { /* already disconnected */ }
     }
 
+    if (monitorElRef.current) {
+      monitorElRef.current.pause();
+      monitorElRef.current.srcObject = null;
+      monitorElRef.current = null;
+    }
+    monitorGainRef.current = null;
+    sinkAppliedRef.current = false;
+    setSendingToDevice(false);
+
     streamRef.current?.getTracks().forEach((track) => track.stop());
-    audioContextRef.current?.close();
+    audioContextRef.current?.close().catch(() => {});
 
     audioContextRef.current = null;
     captureSinkRef.current = null;
@@ -526,6 +592,8 @@ export default function useAudioPipeline(wsHook) {
     setGateParams,
     setListenMode,
     hearMyself,
+    sendingToDevice,
+    setCaptureOptions,
     setHearMyself,
     gateOpen,
     gateLevelDb,

@@ -26,6 +26,25 @@ const QUICK_PRESETS = [
   { id: 'cave', label: 'Cave', kind: 'profile', profileId: 'cave' },
 ];
 
+// Browser-side mic processing, applied when the mic is opened.
+const MIC_OPTIONS = [
+  {
+    key: 'noiseSuppression',
+    label: 'Noise suppression',
+    hint: 'Removes steady background noise such as fans and hiss.',
+  },
+  {
+    key: 'echoCancellation',
+    label: 'Echo cancellation',
+    hint: 'For speakers without headphones. Can dull the voice a little.',
+  },
+  {
+    key: 'autoGain',
+    label: 'Auto mic level',
+    hint: 'Evens out a mic that is too quiet or too loud.',
+  },
+];
+
 const RECENT_KEY = 'badlovoice_recent_voices';
 const HEAR_KEY = 'badlovoice_hear_myself';
 
@@ -367,6 +386,20 @@ export default function StudioPage({
               )}
             </div>
 
+            {live && !hearMyself && !pipeline.sendingToDevice && (
+              <div
+                className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2"
+                role="status"
+              >
+                <p className="text-sm text-[color:var(--ink-text)]">
+                  You are live, but the speakers are muted. Put on headphones to listen.
+                </p>
+                <button type="button" className="chip-button" onClick={() => handleHearMyself(true)}>
+                  Hear myself
+                </button>
+              </div>
+            )}
+
             {live && (
               <div className="mt-3 flex gap-4">
                 <LevelMeter label="Input" value={pipeline.inputLevel} />
@@ -415,6 +448,29 @@ export default function StudioPage({
             </div>
           </div>
 
+          <div className="panel p-3">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
+              Quick voices
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {QUICK_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => applyQuick(p)}
+                  aria-pressed={quickId === p.id || activePresetId === p.profileId}
+                  className={`min-h-11 shrink-0 rounded-xl border px-3.5 py-2 text-sm font-semibold transition ${
+                    quickId === p.id || activePresetId === p.profileId
+                      ? 'border-[color:var(--accent)]/50 bg-[color:var(--accent)]/12 text-[color:var(--accent-soft)]'
+                      : 'border-[color:var(--line)] bg-[color:var(--surface)] text-[color:var(--ink-text)] hover:border-[color:var(--ink-text)]/25'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2.5">
             <input
               type="checkbox"
@@ -427,9 +483,13 @@ export default function StudioPage({
                 Hear myself
               </span>
               <span className="mt-0.5 block text-xs text-[color:var(--muted)]">
-                {hearMyself
-                  ? 'Playing your changed voice — use headphones to avoid echo.'
-                  : 'Speakers muted. Meters and Record still capture your changed voice.'}
+                {pipeline.sendingToDevice
+                  ? hearMyself
+                    ? 'Sending to your chosen output and playing a copy on your default speakers.'
+                    : 'Your changed voice is going to the output you chose. Turn this on to also hear it yourself.'
+                  : hearMyself
+                    ? 'Playing your changed voice — use headphones to avoid echo.'
+                    : 'Speakers muted. Meters and Record still capture your changed voice.'}
               </span>
             </span>
           </label>
@@ -512,37 +572,37 @@ export default function StudioPage({
                   ))}
                 </select>
               </div>
+              <fieldset className="mt-3 space-y-2" disabled={live}>
+                <legend className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
+                  Mic clean-up
+                </legend>
+                {MIC_OPTIONS.map((opt) => (
+                  <label
+                    key={opt.key}
+                    className={`flex items-start gap-2.5 ${live ? 'opacity-60' : 'cursor-pointer'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 accent-[color:var(--accent)]"
+                      checked={Boolean(extras?.[opt.key])}
+                      onChange={(e) => onExtrasChange({ [opt.key]: e.target.checked })}
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-[color:var(--ink-text)]">
+                        {opt.label}
+                      </span>
+                      <span className="block text-xs text-[color:var(--muted)]">{opt.hint}</span>
+                    </span>
+                  </label>
+                ))}
+                {live && (
+                  <p className="text-xs text-[color:var(--muted)]">Stop to change these.</p>
+                )}
+              </fieldset>
             </div>
           )}
         </aside>
       </div>
-
-      {/* Quick presets */}
-      {!isSimple && (
-        <section className="panel p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
-              Quick presets
-            </p>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {QUICK_PRESETS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => applyQuick(p)}
-                className={`shrink-0 rounded-xl border px-3.5 py-2 text-sm font-semibold transition ${
-                  quickId === p.id || activePresetId === p.profileId
-                    ? 'border-[color:var(--accent)]/50 bg-[color:var(--accent)]/12 text-[color:var(--accent-soft)]'
-                    : 'border-[color:var(--line)] bg-[color:var(--surface)] text-[color:var(--ink-text)] hover:border-[color:var(--ink-text)]/25'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* Effects */}
       {!isSimple && (
