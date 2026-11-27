@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { convertFile } from '../lib/api';
 import { countActiveEffects } from '../lib/effects';
+import { renderFileLocally } from '../lib/voiceEngine';
 
 const ACCEPTED = '.wav,.mp3,.flac,.ogg,.m4a,.aiff';
 
@@ -9,9 +10,10 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Offline conversion: renders an uploaded audio file through the active
-// model + current studio settings on the server, returns a WAV.
-export default function FileConverter({ voice, effects, activeModel }) {
+// Offline conversion. Without an AI model the file is rendered right here in
+// the browser by the built-in engine (works on the hosted site and the APK).
+// With a model active it goes through the server pipeline instead.
+export default function FileConverter({ voice, effects, activeModel, gate }) {
   const [file, setFile] = useState(null);
   const [useModel, setUseModel] = useState(true);
   const [converting, setConverting] = useState(false);
@@ -37,13 +39,21 @@ export default function FileConverter({ voice, effects, activeModel }) {
     setConverting(true);
     setError(null);
     try {
-      const blob = await convertFile(file, {
-        pitchShift: voice.pitch,
-        formantShift: voice.formant,
-        f0Method: voice.f0Method,
-        effects,
-        useModel: useModel && Boolean(activeModel),
-      });
+      const blob =
+        useModel && activeModel
+          ? await convertFile(file, {
+              pitchShift: voice.pitch,
+              formantShift: voice.formant,
+              f0Method: voice.f0Method,
+              effects,
+              useModel: true,
+            })
+          : await renderFileLocally(file, {
+              pitch: Number(voice.pitch) || 0,
+              formant: Number(voice.formant) || 0,
+              effects,
+              gate,
+            });
       const name = `${file.name.replace(/\.[^.]+$/, '')}_converted.wav`;
       setResult((prev) => {
         if (prev?.url) URL.revokeObjectURL(prev.url);
@@ -69,7 +79,7 @@ export default function FileConverter({ voice, effects, activeModel }) {
       </div>
 
       <p className="mt-2 text-sm text-[color:var(--muted)]">
-        Render a whole audio file through {activeModel ? 'the active model and ' : ''}the
+        Render a whole audio file through {useModel && activeModel ? 'the active model and ' : ''}the
         effect chain — pitch {voice.pitch > 0 ? '+' : ''}{voice.pitch} st,
         formant {voice.formant > 0 ? '+' : ''}{voice.formant} st, {fxCount} effect{fxCount === 1 ? '' : 's'}.
       </p>
@@ -138,7 +148,7 @@ export default function FileConverter({ voice, effects, activeModel }) {
           />
           Run through active model
           <span className="text-xs text-[color:var(--muted)]">
-            {activeModel ? `(${activeModel})` : '(no model active — DSP only)'}
+            {activeModel ? `(${activeModel})` : '(none active — rendering on this device)'}
           </span>
         </label>
 
@@ -163,7 +173,9 @@ export default function FileConverter({ voice, effects, activeModel }) {
 
       {converting && (
         <p className="mt-3 text-xs text-[color:var(--muted)]">
-          Long files can take a while — the whole file runs through the pipeline server-side.
+          {useModel && activeModel
+            ? 'Long files can take a while — the whole file runs through the model on the server.'
+            : 'Rendering on this device — usually much faster than realtime.'}
         </p>
       )}
 

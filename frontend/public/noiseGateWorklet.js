@@ -3,7 +3,7 @@
  * Opens easily for close-mic speech; stays closed for quiet room noise.
  */
 class NoiseGateProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
     this.enabled = true;
     // Lower = easier for your voice to open (was -42, blocked quiet mics).
@@ -14,11 +14,18 @@ class NoiseGateProcessor extends AudioWorkletProcessor {
     this.gain = 0;
     this.open = false;
     this.holdSamples = 0;
+    this.silent = false;
+    this.sinceReport = 0;
+    const init = options?.processorOptions || {};
+    if (typeof init.enabled === 'boolean') this.enabled = init.enabled;
+    if (typeof init.thresholdDb === 'number') this.thresholdDb = init.thresholdDb;
+    if (typeof init.silent === 'boolean') this.silent = init.silent;
     this.port.onmessage = (event) => {
       const msg = event.data || {};
       if (typeof msg.enabled === 'boolean') this.enabled = msg.enabled;
       if (typeof msg.thresholdDb === 'number') this.thresholdDb = msg.thresholdDb;
       if (typeof msg.holdMs === 'number') this.holdMs = msg.holdMs;
+      if (typeof msg.silent === 'boolean') this.silent = msg.silent;
     };
   }
 
@@ -75,12 +82,17 @@ class NoiseGateProcessor extends AudioWorkletProcessor {
       outputs[0][ch].set(output);
     }
 
-    this.port.postMessage({
-      type: 'gate',
-      open: this.open,
-      levelDb: db,
-      gain: this.gain,
-    });
+    // ~20 reports/s is plenty for the UI; one per render quantum floods React.
+    this.sinceReport += input.length;
+    if (!this.silent && this.sinceReport >= sampleRate * 0.05) {
+      this.sinceReport = 0;
+      this.port.postMessage({
+        type: 'gate',
+        open: this.open,
+        levelDb: db,
+        gain: this.gain,
+      });
+    }
 
     return true;
   }

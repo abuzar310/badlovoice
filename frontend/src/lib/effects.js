@@ -1,5 +1,7 @@
-// Effect rack definitions. Keys and parameter names mirror the backend
-// EffectsChain (backend/services/dsp_effects.py) exactly.
+// Effect rack definitions. Keys and parameter names mirror both engines:
+// the in-browser one (public/voiceEngineCore.js) and the Python rack
+// (backend/services/dsp_effects.py). Effects marked `localOnly` run in the
+// browser engine only — they are skipped when an AI model is the voice.
 
 export const EFFECT_DEFS = [
   {
@@ -16,12 +18,32 @@ export const EFFECT_DEFS = [
     tagline: 'Ring-mod metallic voice',
     params: [
       { key: 'freq', label: 'Carrier', min: 10, max: 300, step: 1, default: 90, unit: 'Hz' },
+      { key: 'mix', label: 'Mix', min: 0, max: 1, step: 0.05, default: 0.75, unit: '' },
+    ],
+  },
+  {
+    key: 'monotone',
+    label: 'Monotone',
+    tagline: 'Locks your pitch to one flat note',
+    localOnly: true,
+    params: [
+      { key: 'freq', label: 'Note', min: 60, max: 400, step: 1, default: 110, unit: 'Hz' },
+    ],
+  },
+  {
+    key: 'vibrato',
+    label: 'Vibrato',
+    tagline: 'Wobbles pitch up and down',
+    localOnly: true,
+    params: [
+      { key: 'rate', label: 'Rate', min: 0.5, max: 12, step: 0.5, default: 5.5, unit: 'Hz' },
+      { key: 'depth', label: 'Depth', min: 0, max: 4, step: 0.1, default: 0.6, unit: 'st' },
     ],
   },
   {
     key: 'whisper',
     label: 'Whisper',
-    tagline: 'Breathy noise-excited voice',
+    tagline: 'Breath-noise vocoder, words stay clear',
     params: [
       { key: 'mix', label: 'Mix', min: 0, max: 1, step: 0.05, default: 1, unit: '' },
     ],
@@ -72,7 +94,7 @@ export const EFFECT_DEFS = [
   {
     key: 'reverb',
     label: 'Reverb',
-    tagline: 'Schroeder room simulation',
+    tagline: 'Room / hall ambience',
     params: [
       { key: 'size', label: 'Size', min: 0, max: 1, step: 0.05, default: 0.5, unit: '' },
       { key: 'mix', label: 'Mix', min: 0, max: 1, step: 0.05, default: 0.35, unit: '' },

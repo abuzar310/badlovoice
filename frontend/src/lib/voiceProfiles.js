@@ -1,7 +1,14 @@
 /**
- * Pitch / formant voice presets for DSP (and Android APK).
- * Pitch = 12 * log2(targetHz / hostHz); host defaults to DEFAULT_HOST_HZ.
+ * Voice presets for the in-browser engine (hosted site + Android APK).
+ *
+ * A profile is either
+ *   - a target speaking pitch (`targetHz`): the shift is worked out from the
+ *     user's own pitch, so "Female" is right for a deep and a high voice, or
+ *   - a fixed shift (`pitch`) for effect voices that should not depend on who
+ *     is talking.
+ * `fx` is applied over a clean rack, so voices never inherit each other's effects.
  */
+import { defaultEffects } from './effects';
 
 export const VOICE_PROFILES = [
   // Adult
@@ -12,7 +19,7 @@ export const VOICE_PROFILES = [
     blurb: 'Young adult man',
     targetHz: 120,
     formantBias: -0.5,
-    eq: { enabled: true, low: 2, high: -1 },
+    fx: { eq: { low: 2, high: -1 } },
   },
   {
     id: 'female',
@@ -21,7 +28,7 @@ export const VOICE_PROFILES = [
     blurb: 'Young adult woman',
     targetHz: 210,
     formantBias: 0.5,
-    eq: { enabled: true, low: -1, high: 3 },
+    fx: { eq: { low: -1, high: 3 } },
   },
   {
     id: 'mid-man',
@@ -30,7 +37,7 @@ export const VOICE_PROFILES = [
     blurb: 'Deeper, warmer man',
     targetHz: 105,
     formantBias: -1,
-    eq: { enabled: true, low: 4, high: -3 },
+    fx: { eq: { low: 4, high: -3 } },
   },
   {
     id: 'mid-woman',
@@ -39,7 +46,7 @@ export const VOICE_PROFILES = [
     blurb: 'Mature woman tone',
     targetHz: 185,
     formantBias: 0.2,
-    eq: { enabled: true, low: 1, high: 1 },
+    fx: { eq: { low: 1, high: 1 } },
   },
   {
     id: 'deep',
@@ -48,7 +55,7 @@ export const VOICE_PROFILES = [
     blurb: 'Extra deep chest voice',
     targetHz: 90,
     formantBias: -1.5,
-    eq: { enabled: true, low: 5, high: -4 },
+    fx: { eq: { low: 5, high: -3 }, compressor: { threshold: -22, ratio: 3 } },
   },
   {
     id: 'bright-female',
@@ -57,7 +64,16 @@ export const VOICE_PROFILES = [
     blurb: 'Airy higher woman',
     targetHz: 240,
     formantBias: 0.8,
-    eq: { enabled: true, low: -2, high: 5 },
+    fx: { eq: { low: -2, high: 5 } },
+  },
+  {
+    id: 'narrator',
+    name: 'Narrator',
+    group: 'Adult',
+    blurb: 'Warm broadcast voice',
+    pitch: -2,
+    formant: -1,
+    fx: { eq: { low: 4, high: 2 }, compressor: { threshold: -26, ratio: 4 } },
   },
   // Teen / Child
   {
@@ -67,7 +83,7 @@ export const VOICE_PROFILES = [
     blurb: 'Teenage boy',
     targetHz: 165,
     formantBias: 0,
-    eq: { enabled: true, low: 0, high: 1 },
+    fx: { eq: { low: 0, high: 1 } },
   },
   {
     id: 'teen-girl',
@@ -76,7 +92,7 @@ export const VOICE_PROFILES = [
     blurb: 'Teenage girl',
     targetHz: 230,
     formantBias: 0.6,
-    eq: { enabled: true, low: -1, high: 4 },
+    fx: { eq: { low: -1, high: 4 } },
   },
   {
     id: 'boy',
@@ -85,7 +101,7 @@ export const VOICE_PROFILES = [
     blurb: 'Young boy',
     targetHz: 280,
     formantBias: 1,
-    eq: { enabled: true, low: -2, high: 5 },
+    fx: { eq: { low: -2, high: 4 } },
   },
   {
     id: 'girl',
@@ -94,76 +110,63 @@ export const VOICE_PROFILES = [
     blurb: 'Young girl',
     targetHz: 310,
     formantBias: 1.4,
-    eq: { enabled: true, low: -3, high: 6 },
+    fx: { eq: { low: -3, high: 5 } },
   },
-  // Fun / FX (great on Android)
+  // Fun / FX
   {
     id: 'giant',
     name: 'Giant',
     group: 'Fun',
-    blurb: 'Very deep giant',
+    blurb: 'Huge and slow-sounding',
     targetHz: 75,
     formantBias: -2,
-    eq: { enabled: true, low: 6, high: -5 },
-    robot: false,
+    fx: { eq: { low: 6, high: -4 }, reverb: { size: 0.7, mix: 0.18 } },
   },
   {
     id: 'chipmunk',
     name: 'Chipmunk',
     group: 'Fun',
-    blurb: 'Helium / squeaky',
+    blurb: 'Tiny and squeaky',
     targetHz: 360,
     formantBias: 2,
-    eq: { enabled: true, low: -4, high: 7 },
+    fx: { eq: { low: -4, high: 5 } },
   },
   {
     id: 'helium',
     name: 'Helium',
     group: 'Fun',
-    blurb: 'Party balloon voice',
-    targetHz: 320,
-    formantBias: 1.8,
-    eq: { enabled: true, low: -3, high: 6 },
+    blurb: 'Balloon voice, same pitch',
+    pitch: 2,
+    formant: 7,
+    fx: { eq: { low: -3, high: 4 } },
   },
   {
     id: 'monster',
     name: 'Monster',
     group: 'Fun',
     blurb: 'Dark creature growl',
-    targetHz: 85,
+    targetHz: 82,
     formantBias: -2.2,
-    eq: { enabled: true, low: 5, high: -6 },
-    robot: { enabled: true, freq: 55 },
+    fx: {
+      robot: { freq: 48, mix: 0.3 },
+      distortion: { drive: 0.22 },
+      eq: { low: 5, high: -5 },
+      reverb: { size: 0.35, mix: 0.14 },
+    },
   },
   {
-    id: 'robot',
-    name: 'Robot',
+    id: 'demon',
+    name: 'Demon',
     group: 'Fun',
-    blurb: 'Metallic ring-mod',
-    targetHz: 140,
-    formantBias: -0.2,
-    eq: { enabled: true, low: 0, high: 2 },
-    robot: { enabled: true, freq: 90 },
-  },
-  {
-    id: 'radio',
-    name: 'Radio',
-    group: 'Fun',
-    blurb: 'Walkie-talkie vibe',
-    targetHz: 130,
-    formantBias: 0,
-    eq: { enabled: true, low: -2, high: 4 },
-    telephone: true,
-  },
-  {
-    id: 'whisper-high',
-    name: 'Soft high',
-    group: 'Fun',
-    blurb: 'Soft raised tone',
-    targetHz: 250,
-    formantBias: 1,
-    eq: { enabled: true, low: -4, high: 5 },
-    whisper: true,
+    blurb: 'Layered, hellish low voice',
+    pitch: -10,
+    formant: -5,
+    fx: {
+      chorus: { rate: 0.4, depth: 0.9, mix: 0.5 },
+      distortion: { drive: 0.3 },
+      eq: { low: 6, high: -4 },
+      reverb: { size: 0.8, mix: 0.28 },
+    },
   },
   {
     id: 'villain',
@@ -172,23 +175,109 @@ export const VOICE_PROFILES = [
     blurb: 'Movie bad-guy deep',
     targetHz: 95,
     formantBias: -1.8,
-    eq: { enabled: true, low: 4, high: -4 },
+    fx: { eq: { low: 4, high: -3 }, reverb: { size: 0.6, mix: 0.2 } },
+  },
+  {
+    id: 'robot',
+    name: 'Robot',
+    group: 'Fun',
+    blurb: 'Flat, metallic machine',
+    pitch: 0,
+    formant: -0.5,
+    fx: {
+      monotone: { freq: 115 },
+      robot: { freq: 58, mix: 0.3 },
+      eq: { low: 0, high: 3 },
+    },
+  },
+  {
+    id: 'alien',
+    name: 'Alien',
+    group: 'Fun',
+    blurb: 'Warbling outer-space voice',
+    pitch: 4,
+    formant: 4,
+    fx: {
+      vibrato: { rate: 9, depth: 1.4 },
+      chorus: { rate: 2.2, depth: 0.8, mix: 0.5 },
+      eq: { low: -3, high: 4 },
+    },
+  },
+  {
+    id: 'ghost',
+    name: 'Ghost',
+    group: 'Fun',
+    blurb: 'Breathy and far away',
+    pitch: 3,
+    formant: 1,
+    fx: {
+      whisper: { mix: 0.65 },
+      reverb: { size: 0.95, mix: 0.45 },
+      eq: { low: -4, high: 3 },
+    },
+  },
+  {
+    id: 'whisper-high',
+    name: 'Whisper',
+    group: 'Fun',
+    blurb: 'Secret-telling whisper',
+    pitch: 0,
+    formant: 0.5,
+    fx: { whisper: { mix: 1 }, eq: { low: -4, high: 3 } },
+  },
+  {
+    id: 'radio',
+    name: 'Radio',
+    group: 'Fun',
+    blurb: 'Walkie-talkie vibe',
+    pitch: 0,
+    formant: 0,
+    fx: {
+      distortion: { drive: 0.12 },
+      telephone: {},
+      compressor: { threshold: -24, ratio: 5 },
+    },
+  },
+  {
+    id: 'megaphone',
+    name: 'Megaphone',
+    group: 'Fun',
+    blurb: 'Loud, crunchy bullhorn',
+    pitch: 0,
+    formant: 0,
+    fx: {
+      distortion: { drive: 0.4 },
+      telephone: {},
+      echo: { time: 0.11, feedback: 0.2, mix: 0.18 },
+    },
+  },
+  {
+    id: 'cave',
+    name: 'Cave',
+    group: 'Fun',
+    blurb: 'Big echoing space',
+    pitch: 0,
+    formant: 0,
+    fx: {
+      echo: { time: 0.32, feedback: 0.45, mix: 0.3 },
+      reverb: { size: 0.9, mix: 0.35 },
+    },
   },
 ];
 
-/** Featured presets for Simple home (tap-first). */
+/** Featured presets for the phone-first home (tap-first). */
 export const FEATURED_PROFILE_IDS = [
   'deep',
-  'bright-female',
-  'whisper-high',
+  'female',
   'chipmunk',
   'monster',
   'robot',
-  'giant',
-  'villain',
+  'whisper-high',
+  'alien',
+  'cave',
 ];
 
-/** Assumed host F0 for DSP profile shifts (typical adult male). */
+/** Assumed speaking pitch until the engine has measured the user's own. */
 export const DEFAULT_HOST_HZ = 120;
 
 export function clamp(n, lo, hi) {
@@ -203,38 +292,42 @@ export function pitchFromHost(hostHz, targetHz) {
   return Math.round(clamp(semis, -16, 16) * 10) / 10;
 }
 
+/**
+ * Vocal-tract (formant) shift that goes with a pitch change. A real voice an
+ * octave higher has resonances only ~3–4 semitones higher, so formants follow
+ * pitch at roughly a third of the rate.
+ */
 export function formantFromPitch(pitchSemis, bias = 0) {
-  return Math.round(clamp(pitchSemis * 0.65 + bias, -8, 8) * 10) / 10;
+  return Math.round(clamp(pitchSemis * 0.3 + bias, -8, 8) * 10) / 10;
 }
 
 export function profileToVoicePartial(profile, hostHz = DEFAULT_HOST_HZ) {
+  if (typeof profile.pitch === 'number') {
+    return {
+      pitch: profile.pitch,
+      formant: typeof profile.formant === 'number' ? profile.formant : 0,
+    };
+  }
   const pitch = pitchFromHost(hostHz, profile.targetHz);
-  const formant = formantFromPitch(pitch, profile.formantBias || 0);
+  const formant =
+    typeof profile.formant === 'number'
+      ? profile.formant
+      : formantFromPitch(pitch, profile.formantBias || 0);
   return { pitch, formant };
 }
 
-export function profileToEffects(profile, baseEffects) {
-  const next = { ...(baseEffects || {}) };
-  next.robot = profile.robot
-    ? { enabled: true, freq: profile.robot.freq || 90 }
-    : { enabled: false, freq: 90 };
-  next.bitcrush = { ...(next.bitcrush || {}), enabled: false };
-  next.telephone = {
-    ...(next.telephone || { enabled: false }),
-    enabled: Boolean(profile.telephone),
-  };
-  next.whisper = {
-    ...(next.whisper || { enabled: false }),
-    enabled: Boolean(profile.whisper),
-  };
-  if (profile.eq) next.eq = { ...profile.eq };
+/** A clean rack with only this profile's effects switched on. */
+export function profileToEffects(profile) {
+  const next = defaultEffects();
+  for (const [key, params] of Object.entries(profile.fx || {})) {
+    if (next[key]) next[key] = { ...next[key], ...params, enabled: true };
+  }
   return next;
 }
 
 export function describeShift(hostHz, profile) {
-  const partial = profileToVoicePartial(profile, hostHz);
   return {
-    ...partial,
+    ...profileToVoicePartial(profile, hostHz),
     hostHz,
     targetHz: profile.targetHz,
   };

@@ -9,8 +9,7 @@ import PresetBar from './PresetBar';
 import ErrorBoundary from './ErrorBoundary';
 import {
   VOICE_PROFILES,
-  pitchFromHost,
-  DEFAULT_HOST_HZ,
+  profileToVoicePartial,
 } from '../lib/voiceProfiles';
 import { defaultEffects } from '../lib/effects';
 
@@ -19,10 +18,12 @@ const GROUPS = ['Adult', 'Teen', 'Child', 'Fun'];
 const QUICK_PRESETS = [
   { id: 'natural', label: 'Natural', kind: 'natural' },
   { id: 'deep', label: 'Deep', kind: 'profile', profileId: 'deep' },
-  { id: 'radio', label: 'Radio', kind: 'profile', profileId: 'radio' },
+  { id: 'female', label: 'Female', kind: 'profile', profileId: 'female' },
   { id: 'robot', label: 'Robot', kind: 'profile', profileId: 'robot' },
   { id: 'monster', label: 'Monster', kind: 'profile', profileId: 'monster' },
-  { id: 'telephone', label: 'Telephone', kind: 'effect', effectKey: 'telephone' },
+  { id: 'whisper-high', label: 'Whisper', kind: 'profile', profileId: 'whisper-high' },
+  { id: 'radio', label: 'Radio', kind: 'profile', profileId: 'radio' },
+  { id: 'cave', label: 'Cave', kind: 'profile', profileId: 'cave' },
 ];
 
 const RECENT_KEY = 'badlovoice_recent_voices';
@@ -99,6 +100,9 @@ export default function StudioPage({
   onEffectsChange,
   activePresetId,
   onSelectProfile,
+  hostPitch,
+  onCalibrateHostPitch,
+  modelActive = false,
   applyPreset,
   getCurrentSettings,
   extras,
@@ -121,6 +125,7 @@ export default function StudioPage({
   const [error, setError] = useState(null);
   const [showAdvancedFx, setShowAdvancedFx] = useState(density === 'advanced');
   const [quickId, setQuickId] = useState(null);
+  const [calibrateNote, setCalibrateNote] = useState(null);
   const [hearMyself, setHearMyself] = useState(() => {
     try {
       return localStorage.getItem(HEAR_KEY) === '1';
@@ -218,7 +223,20 @@ export default function StudioPage({
     }
   };
 
+  const handleCalibrate = () => {
+    if (!pipeline.isRunning) {
+      setCalibrateNote('Press Start and talk for a few seconds first.');
+      return;
+    }
+    setCalibrateNote(
+      onCalibrateHostPitch?.()
+        ? 'Matched — voices now aim from your own pitch.'
+        : 'Keep talking normally for a few seconds, then tap again.'
+    );
+  };
+
   const live = pipeline.isRunning;
+  const shownLatency = modelActive ? latency : pipeline.engineLatencyMs;
   const dspActive = Object.values(effects || {}).filter((e) => e && e.enabled).length;
 
   return (
@@ -288,7 +306,7 @@ export default function StudioPage({
 
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-0.5">
             {filtered.map((profile) => {
-              const pitch = pitchFromHost(DEFAULT_HOST_HZ, profile.targetHz);
+              const { pitch } = profileToVoicePartial(profile, hostPitch?.hz);
               return (
                 <VoiceCard
                   key={profile.id}
@@ -356,7 +374,13 @@ export default function StudioPage({
                 <div className="shrink-0 text-right">
                   <p className="text-[11px] text-[color:var(--muted)]">Latency</p>
                   <p className="font-mono text-sm font-semibold tabular-nums">
-                    {latency > 0 ? `${Math.round(latency)} ms` : '—'}
+                    {shownLatency > 0 ? `${Math.round(shownLatency)} ms` : '—'}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-[11px] text-[color:var(--muted)]">Your pitch</p>
+                  <p className="font-mono text-sm font-semibold tabular-nums">
+                    {pipeline.voicePitchHz > 0 ? `${pipeline.voicePitchHz} Hz` : '—'}
                   </p>
                 </div>
               </div>
@@ -404,8 +428,8 @@ export default function StudioPage({
               </span>
               <span className="mt-0.5 block text-xs text-[color:var(--muted)]">
                 {hearMyself
-                  ? 'Playing changed voice on your speaker — use headphones to avoid echo.'
-                  : 'Speaker preview off. Best for Discord/calls on speakers; voice still runs.'}
+                  ? 'Playing your changed voice — use headphones to avoid echo.'
+                  : 'Speakers muted. Meters and Record still capture your changed voice.'}
               </span>
             </span>
           </label>
@@ -429,6 +453,31 @@ export default function StudioPage({
             isRunning={live}
             compact
           />
+
+          <div className="panel p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
+                  Your voice
+                </p>
+                <p className="mt-1 text-sm">
+                  <span className="font-mono font-semibold tabular-nums">
+                    {Math.round(hostPitch?.hz || 0)} Hz
+                  </span>{' '}
+                  <span className="text-xs text-[color:var(--muted)]">
+                    {hostPitch?.measured ? 'measured' : 'assumed until you talk'}
+                  </span>
+                </p>
+              </div>
+              <button type="button" className="chip-button shrink-0" onClick={handleCalibrate}>
+                Match my voice
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-[color:var(--muted)]" aria-live="polite">
+              {calibrateNote ||
+                'Voices like Female or Deep aim for a target pitch, measured from how you really speak.'}
+            </p>
+          </div>
 
           {!isSimple && (
             <div className="panel p-3">
@@ -504,7 +553,9 @@ export default function StudioPage({
                 Effects
               </p>
               <p className="mt-0.5 text-sm text-[color:var(--muted)]">
-                Core chain — open advanced for the full DSP rack
+                {modelActive
+                  ? 'Applied on the server after the AI model'
+                  : 'All effects run live on this device — no server needed'}
               </p>
             </div>
             <button
@@ -624,7 +675,7 @@ export default function StudioPage({
           <span className="text-[color:var(--muted)]">
             Latency{' '}
             <strong className="font-mono font-medium text-[color:var(--ink-text)]">
-              {latency > 0 ? `${Math.round(latency)}ms` : '—'}
+              {shownLatency > 0 ? `${Math.round(shownLatency)}ms` : '—'}
             </strong>
             {serverMs > 0 ? (
               <span className="ml-1 opacity-70">· srv {Math.round(serverMs)}ms</span>
@@ -633,7 +684,7 @@ export default function StudioPage({
           <span className="text-[color:var(--muted)]">
             Model{' '}
             <strong className="font-medium text-[color:var(--ink-text)]">
-              {activeModel || 'DSP pitch'}
+              {modelActive ? activeModel : 'Built-in engine'}
             </strong>
           </span>
           <span className="text-[color:var(--muted)]">
@@ -643,8 +694,10 @@ export default function StudioPage({
             </strong>
           </span>
           <span className="text-[color:var(--muted)]">
-            WS{' '}
-            <strong className="font-medium text-[color:var(--ink-text)]">{wsStatus}</strong>
+            Server{' '}
+            <strong className="font-medium text-[color:var(--ink-text)]">
+              {wsStatus === 'connected' ? 'connected' : 'not needed'}
+            </strong>
           </span>
           {pipeline.isRecording && (
             <span className="ml-auto font-mono font-semibold text-[color:var(--danger-soft)]">
@@ -654,7 +707,7 @@ export default function StudioPage({
           )}
           {!pipeline.isRecording && runtimeConfig?.sampleRate && (
             <span className="ml-auto text-[color:var(--muted)]">
-              {runtimeConfig.sampleRate} Hz · mode {serverStats?.mode || 'dsp'}
+              {modelActive ? `${runtimeConfig.sampleRate} Hz · mode ${serverStats?.mode || 'model'}` : 'On-device'}
             </span>
           )}
         </div>

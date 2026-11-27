@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "node --test tests/voiceEngine.test.mjs",
     "mobile:sync": "npm run build && npx cap sync",
     "mobile:open": "npx cap open android",
     "apk": "npm run mobile:sync && cd android && .\\gradlew.bat assembleDebug",

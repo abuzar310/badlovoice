@@ -1,10 +1,10 @@
 import React from 'react';
 
 const STATUS_CONFIG = {
-  connected: { color: 'bg-[color:var(--success)]', label: 'Live' },
+  connected: { color: 'bg-[color:var(--success)]', label: 'Server' },
   connecting: { color: 'bg-amber-500', label: 'Connecting' },
-  disconnected: { color: 'bg-[color:var(--muted)]', label: 'Offline' },
-  error: { color: 'bg-[color:var(--danger)]', label: 'Error' },
+  disconnected: { color: 'bg-[color:var(--success)]', label: 'On-device' },
+  error: { color: 'bg-[color:var(--success)]', label: 'On-device' },
 };
 
 // Compact header status: connection dot, engine mode, active model.
@@ -12,7 +12,7 @@ export default function StatusIndicator({ wsStatus, activeModel, mode }) {
   const config = STATUS_CONFIG[wsStatus] || STATUS_CONFIG.disconnected;
   const engineLabel = activeModel
     ? (mode === 'onnx' ? 'ONNX' : 'RVC')
-    : 'DSP';
+    : 'Local';
 
   return (
     <div className="flex items-center gap-2">
@@ -30,13 +30,13 @@ export default function StatusIndicator({ wsStatus, activeModel, mode }) {
 
       <div
         className="hidden items-center gap-2 rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-2.5 py-1.5 md:flex"
-        title={activeModel || 'No model loaded — pure DSP mode'}
+        title={activeModel || 'Built-in voice engine — runs on this device'}
       >
         <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--ink-text)]">
           {engineLabel}
         </span>
         <span className="max-w-[160px] truncate text-[11px] text-[color:var(--muted)]">
-          {activeModel || 'Effects only'}
+          {activeModel || 'Built-in engine'}
         </span>
       </div>
     </div>

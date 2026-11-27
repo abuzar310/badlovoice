@@ -13,13 +13,19 @@ import useAudioDevices from './hooks/useAudioDevices';
 import { getActiveModel, fetchConfig } from './lib/api';
 import { applyConfig } from './lib/constants';
 import { defaultEffects, effectsFromPreset } from './lib/effects';
-import { profileToEffects, profileToVoicePartial } from './lib/voiceProfiles';
+import {
+  DEFAULT_HOST_HZ,
+  VOICE_PROFILES,
+  profileToEffects,
+  profileToVoicePartial,
+} from './lib/voiceProfiles';
 
 const GLOBAL_SETTINGS_STORAGE_KEY = 'shiftbooth_global_settings';
 const VOICE_STORAGE_KEY = 'shiftbooth_voice_v11';
 const EFFECTS_STORAGE_KEY = 'shiftbooth_effects_v10';
 const EXTRAS_STORAGE_KEY = 'shiftbooth_extras_v10';
 const UI_MODE_STORAGE_KEY = 'shiftbooth_ui_mode';
+const HOST_PITCH_STORAGE_KEY = 'badlovoice_host_pitch';
 
 const DEFAULT_VOICE = {
   pitch: 7,
@@ -153,6 +159,14 @@ export default function App() {
   const [voice, setVoice] = useState(loadInitialVoice);
   const [effects, setEffects] = useState(loadInitialEffects);
   const [activePresetId, setActivePresetId] = useState(null);
+  // The user's own speaking pitch. Measured by the engine; presets aim from it.
+  const [hostPitch, setHostPitch] = useState(() => {
+    const stored = readStored(HOST_PITCH_STORAGE_KEY);
+    const hz = Number(stored?.hz);
+    return hz >= 60 && hz <= 500
+      ? { hz, measured: true }
+      : { hz: DEFAULT_HOST_HZ, measured: false };
+  });
   const [extras, setExtras] = useState(() => {
     const stored = readStored(EXTRAS_STORAGE_KEY) || {};
     return {
@@ -190,8 +204,9 @@ export default function App() {
     },
   };
 
-  // With an RVC/ONNX module, let the model own the voice — don't stack DSP pitch/formant.
-  const modelActive = Boolean(activeModel);
+  // With an RVC/ONNX model on a reachable server, the model owns the voice.
+  // Otherwise everything (pitch, formant, effects) runs in the browser engine.
+  const modelActive = Boolean(activeModel) && wsStatus === 'connected';
   settingsPayloadRef.current = {
     pitch_shift: modelActive ? 0 : voice.pitch,
     formant_shift: modelActive ? 0 : voice.formant,
@@ -213,14 +228,11 @@ export default function App() {
     writeStored(EFFECTS_STORAGE_KEY, effects);
     writeStored(EXTRAS_STORAGE_KEY, extras);
 
-    // DSP: loud local pitch. RVC: duck local so you can hear the model return.
     pipeline.setListenMode?.(modelActive ? 'rvc' : 'local');
-    pipeline.setMonitorParams?.({
-      pitch: modelActive ? 0 : (Number(voice.pitch) || 7),
-      // Keep robot mild — high wet made recordings unintelligible.
-      robot: !modelActive && effects?.robot?.enabled ? 0.4 : 0,
-      robotFreq: Number(effects?.robot?.freq) || 90,
-      enabled: !modelActive,
+    pipeline.setEngineParams?.({
+      pitch: Number(voice.pitch) || 0,
+      formant: Number(voice.formant) || 0,
+      effects,
     });
     pipeline.setGateParams?.({
       enabled: Boolean(extras.blockBackground),
@@ -332,11 +344,32 @@ export default function App() {
     setActivePresetId(preset.id);
   }, []);
 
-  const applyVoiceProfile = useCallback((profile) => {
-    setVoice((prev) => ({ ...prev, ...profileToVoicePartial(profile) }));
-    setEffects((prev) => profileToEffects(profile, prev));
-    setActivePresetId(profile.id);
-  }, []);
+  const applyVoiceProfile = useCallback(
+    (profile, hz = hostPitch.hz) => {
+      setVoice((prev) => ({ ...prev, ...profileToVoicePartial(profile, hz) }));
+      setEffects(profileToEffects(profile));
+      setActivePresetId(profile.id);
+    },
+    [hostPitch.hz]
+  );
+
+  // Lock presets to the user's real voice. Returns false if there is not
+  // enough speech to measure yet.
+  const calibrateHostPitch = useCallback(() => {
+    const hz = Math.round(pipeline.getMedianPitch?.() || 0);
+    if (!(hz >= 60 && hz <= 500)) return false;
+    setHostPitch({ hz, measured: true });
+    writeStored(HOST_PITCH_STORAGE_KEY, { hz });
+    const profile = VOICE_PROFILES.find((p) => p.id === activePresetId);
+    if (profile) applyVoiceProfile(profile, hz);
+    return true;
+  }, [pipeline, activePresetId, applyVoiceProfile]);
+
+  // First run: measure automatically once the user has talked for a moment.
+  useEffect(() => {
+    if (hostPitch.measured || !pipeline.isRunning || !pipeline.voicePitchHz) return;
+    calibrateHostPitch();
+  }, [hostPitch.measured, pipeline.isRunning, pipeline.voicePitchHz, calibrateHostPitch]);
 
   const getCurrentSettings = useCallback(() => ({
     pitch_shift: voice.pitch,
@@ -499,6 +532,9 @@ export default function App() {
           onEffectsChange={handleEffectsChange}
           activePresetId={activePresetId}
           onSelectProfile={applyVoiceProfile}
+          hostPitch={hostPitch}
+          onCalibrateHostPitch={calibrateHostPitch}
+          modelActive={modelActive}
           applyPreset={applyPreset}
           getCurrentSettings={getCurrentSettings}
           extras={extras}
@@ -529,7 +565,7 @@ export default function App() {
             <div className="mt-4 flex flex-wrap gap-3 text-sm">
               <div className="rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2">
                 <p className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--muted)]">Active</p>
-                <p className="font-semibold">{activeModel || 'None · DSP pitch only'}</p>
+                <p className="font-semibold">{activeModel || 'None · built-in voice engine'}</p>
               </div>
               <div className="rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2">
                 <p className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--muted)]">Torch</p>
@@ -575,13 +611,18 @@ export default function App() {
               Offline file conversion
             </h1>
             <p className="mt-1 text-sm text-[color:var(--muted)]">
-              Uses your current Studio pitch, formant, effects, and active model.
+              Uses your current Studio pitch, formant and effects. Runs in your browser — no server
+              needed unless you want an AI model.
             </p>
           </header>
           <FileConverter
             voice={voice}
             effects={effects}
-            activeModel={activeModel}
+            activeModel={modelActive ? activeModel : null}
+            gate={{
+              enabled: Boolean(extras.blockBackground),
+              thresholdDb: Number(extras.vadThresholdDb) || -56,
+            }}
           />
         </div>
       )}

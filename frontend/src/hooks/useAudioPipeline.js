@@ -1,8 +1,19 @@
 import { useCallback, useRef, useState } from 'react';
 import { SAMPLE_RATE, CHUNK_SIZE } from '../lib/constants';
 import { encodeWav } from '../lib/wav';
+import {
+  assetUrl,
+  medianPitch,
+  ENGINE_WORKLET,
+  GATE_WORKLET,
+  IO_WORKLET,
+} from '../lib/voiceEngine';
+
+const PITCH_HISTORY = 160; // ≈ 8 s of voiced speech at 20 readings/s
 
 export default function useAudioPipeline(wsHook) {
+  const wsRef = useRef(wsHook);
+  wsRef.current = wsHook;
   const [isRunning, setIsRunning] = useState(false);
   const [inputLevel, setInputLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
@@ -20,8 +31,9 @@ export default function useAudioPipeline(wsHook) {
   const captureNodeRef = useRef(null);
   const playbackNodeRef = useRef(null);
   const playbackGainRef = useRef(null);
-  const monitorNodeRef = useRef(null);
-  const monitorGainRef = useRef(null);
+  const engineNodeRef = useRef(null);
+  const engineGainRef = useRef(null);
+  const speakerGainRef = useRef(null);
   const inputAnalyserRef = useRef(null);
   const outputAnalyserRef = useRef(null);
   const animFrameRef = useRef(null);
@@ -30,38 +42,36 @@ export default function useAudioPipeline(wsHook) {
   const recordChunksRef = useRef([]);
   const recordSamplesRef = useRef(0);
   const sampleRateRef = useRef(SAMPLE_RATE);
-  const monitorParamsRef = useRef({ pitch: 7, robot: 0, robotFreq: 90, enabled: true });
+  const engineParamsRef = useRef({ pitch: 0, formant: 0, effects: {} });
+  const pitchHistoryRef = useRef([]);
+  const pitchTickRef = useRef(0);
+  const [voicePitchHz, setVoicePitchHz] = useState(0);
+  const [engineLatencyMs, setEngineLatencyMs] = useState(0);
   const gateParamsRef = useRef({ enabled: false, thresholdDb: -56, holdMs: 280 });
-  const recordDestRef = useRef(null);
   const recordProcessorRef = useRef(null);
   const listenModeRef = useRef('local'); // local | rvc
   // Speakers + mic = feedback. Default off; user opts in (headphones).
   const hearMyselfRef = useRef(false);
   const [hearMyself, setHearMyselfState] = useState(false);
 
+  // Routing rules:
+  //   local — the in-browser engine is the voice (no server needed).
+  //   rvc   — the server model is the voice; the engine only tracks pitch.
+  // Exactly one source is audible, so the two are never doubled up.
+  // "Hear myself" only mutes the speakers; meters and the recorder still get audio.
   const applyOutputGains = useCallback(() => {
     const ctx = audioContextRef.current;
     const now = ctx?.currentTime ?? 0;
-    const hear = hearMyselfRef.current;
-    const rvc = listenModeRef.current === 'rvc' || listenModeRef.current === 'server';
-
-    if (monitorGainRef.current) {
-      monitorGainRef.current.gain.cancelScheduledValues(now);
-      const localLevel = !hear ? 0 : rvc ? 0.12 : 1.0;
-      monitorGainRef.current.gain.setValueAtTime(localLevel, now);
-    }
-    if (playbackGainRef.current) {
-      playbackGainRef.current.gain.cancelScheduledValues(now);
-      const playLevel = !hear ? 0 : rvc ? 1.8 : 1.0;
-      playbackGainRef.current.gain.setValueAtTime(playLevel, now);
-    }
-    if (monitorNodeRef.current) {
-      monitorNodeRef.current.port.postMessage({
-        ...monitorParamsRef.current,
-        enabled: hear && !rvc,
-        pitch: rvc ? 0 : monitorParamsRef.current.pitch,
-      });
-    }
+    const rvc = listenModeRef.current === 'rvc';
+    const ramp = (node, value) => {
+      if (!node) return;
+      node.gain.cancelScheduledValues(now);
+      node.gain.setTargetAtTime(value, now, 0.015);
+    };
+    ramp(engineGainRef.current, rvc ? 0 : 1);
+    ramp(playbackGainRef.current, rvc ? 1.4 : 0);
+    ramp(speakerGainRef.current, hearMyselfRef.current ? 1 : 0);
+    engineNodeRef.current?.port.postMessage({ ...engineParamsRef.current, enabled: !rvc });
   }, []);
 
   const rmsToMeter = (rms) => {
@@ -104,20 +114,36 @@ export default function useAudioPipeline(wsHook) {
     animFrameRef.current = requestAnimationFrame(updateLevels);
   }, []);
 
-  const setMonitorParams = useCallback((partial) => {
-    monitorParamsRef.current = { ...monitorParamsRef.current, ...partial };
-    monitorNodeRef.current?.port.postMessage(monitorParamsRef.current);
+  /** Push pitch / formant / effects to the local engine. */
+  const setEngineParams = useCallback((partial) => {
+    engineParamsRef.current = { ...engineParamsRef.current, ...partial };
+    engineNodeRef.current?.port.postMessage({
+      ...engineParamsRef.current,
+      enabled: listenModeRef.current !== 'rvc',
+    });
   }, []);
+
+  /** Median speaking pitch (Hz) over the last few seconds, 0 if not enough speech yet. */
+  const getMedianPitch = useCallback(() => medianPitch(pitchHistoryRef.current), []);
 
   const setGateParams = useCallback((partial) => {
     gateParamsRef.current = { ...gateParamsRef.current, ...partial };
     gateNodeRef.current?.port.postMessage(gateParamsRef.current);
   }, []);
 
-  // local = pitched DSP preview (instant). rvc = hear server model (duck local).
+  // local = in-browser engine. rvc = server model return.
   const setListenMode = useCallback(
     (mode) => {
-      listenModeRef.current = mode === 'rvc' || mode === 'server' ? 'rvc' : 'local';
+      const next = mode === 'rvc' || mode === 'server' ? 'rvc' : 'local';
+      const changed = next !== listenModeRef.current;
+      listenModeRef.current = next;
+      if (changed && next === 'rvc' && audioContextRef.current) {
+        // The server may have connected after Start — tell it our real rate.
+        wsRef.current.sendSettings?.({
+          sample_rate: sampleRateRef.current,
+          chunk_size: CHUNK_SIZE,
+        });
+      }
       applyOutputGains();
     },
     [applyOutputGains]
@@ -137,10 +163,20 @@ export default function useAudioPipeline(wsHook) {
   const start = useCallback(
     async (inputDeviceId, outputDeviceId) => {
       try {
-        const audioContext = new AudioContext({
-          sampleRate: SAMPLE_RATE,
-          latencyHint: 'interactive',
-        });
+        // A server model needs its configured rate. With no server we stay on
+        // the device's native rate — no resampling, and fewer WebView quirks.
+        const serverReady = wsHook.status === 'connected';
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioContext;
+        try {
+          audioContext = new AudioCtx(
+            serverReady
+              ? { sampleRate: SAMPLE_RATE, latencyHint: 'interactive' }
+              : { latencyHint: 'interactive' }
+          );
+        } catch {
+          audioContext = new AudioCtx();
+        }
         audioContextRef.current = audioContext;
         const actualRate = audioContext.sampleRate || SAMPLE_RATE;
         sampleRateRef.current = actualRate;
@@ -150,30 +186,43 @@ export default function useAudioPipeline(wsHook) {
         });
 
         if (outputDeviceId && audioContext.setSinkId) {
-          await audioContext.setSinkId(outputDeviceId);
+          await audioContext.setSinkId(outputDeviceId).catch(() => {});
         }
 
-        const constraints = {
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-            channelCount: 1,
-            sampleRate: actualRate,
-            ...(inputDeviceId ? { deviceId: { exact: inputDeviceId } } : {}),
-          },
+        const audioConstraints = {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 1,
         };
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              ...audioConstraints,
+              ...(inputDeviceId ? { deviceId: { exact: inputDeviceId } } : {}),
+            },
+          });
+        } catch (err) {
+          // A saved mic that was unplugged should not block Start.
+          if (err.name !== 'OverconstrainedError' && err.name !== 'NotFoundError') throw err;
+          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+        }
         streamRef.current = stream;
 
         const source = audioContext.createMediaStreamSource(stream);
         sourceRef.current = source;
 
-        await audioContext.audioWorklet.addModule('/audioWorklet.js');
-        await audioContext.audioWorklet.addModule('/dspMonitorWorklet.js');
-        await audioContext.audioWorklet.addModule('/noiseGateWorklet.js');
+        await Promise.all([
+          audioContext.audioWorklet.addModule(assetUrl(IO_WORKLET)),
+          audioContext.audioWorklet.addModule(assetUrl(ENGINE_WORKLET)),
+          audioContext.audioWorklet.addModule(assetUrl(GATE_WORKLET)),
+        ]);
+
+        const mono = { channelCount: 1, channelCountMode: 'explicit' };
 
         const gateNode = new AudioWorkletNode(audioContext, 'noise-gate-processor', {
+          ...mono,
           outputChannelCount: [1],
         });
         gateNodeRef.current = gateNode;
@@ -187,6 +236,7 @@ export default function useAudioPipeline(wsHook) {
         };
 
         const captureNode = new AudioWorkletNode(audioContext, 'capture-processor', {
+          ...mono,
           processorOptions: { chunkSize: CHUNK_SIZE },
         });
         captureNodeRef.current = captureNode;
@@ -197,32 +247,61 @@ export default function useAudioPipeline(wsHook) {
         });
         playbackNodeRef.current = playbackNode;
 
-        const monitorNode = new AudioWorkletNode(audioContext, 'dsp-monitor-processor', {
+        const engineNode = new AudioWorkletNode(audioContext, 'voice-engine-processor', {
+          ...mono,
           outputChannelCount: [1],
+          processorOptions: {
+            params: { ...engineParamsRef.current, enabled: listenModeRef.current !== 'rvc' },
+          },
         });
-        monitorNodeRef.current = monitorNode;
-        monitorNode.port.postMessage(monitorParamsRef.current);
+        engineNodeRef.current = engineNode;
+        pitchHistoryRef.current = [];
+        const outputLatency =
+          (audioContext.baseLatency || 0) + (audioContext.outputLatency || 0);
+        engineNode.port.onmessage = (event) => {
+          const msg = event.data;
+          if (msg?.type !== 'pitch') return;
+          const hz = Number(msg.hz) || 0;
+          if (hz > 0) {
+            const history = pitchHistoryRef.current;
+            history.push(hz);
+            if (history.length > PITCH_HISTORY) history.shift();
+          }
+          // 20 messages/s arrive; repaint at ~7/s.
+          if (++pitchTickRef.current % 3 === 0) {
+            setVoicePitchHz(hz > 0 ? Math.round(hz) : 0);
+            setEngineLatencyMs(Math.round(((Number(msg.latency) || 0) + outputLatency) * 1000));
+          }
+        };
+        engineNode.onprocessorerror = (event) => {
+          console.error('Voice engine crashed', event);
+        };
 
         const captureSink = audioContext.createGain();
         captureSink.gain.value = 0;
         captureSinkRef.current = captureSink;
 
         const playbackGain = audioContext.createGain();
+        playbackGain.gain.value = 0;
         playbackGainRef.current = playbackGain;
 
-        const monitorGain = audioContext.createGain();
-        monitorGainRef.current = monitorGain;
+        const engineGain = audioContext.createGain();
+        engineGainRef.current = engineGain;
+
+        const speakerGain = audioContext.createGain();
+        speakerGain.gain.value = 0;
+        speakerGainRef.current = speakerGain;
 
         const mixGain = audioContext.createGain();
         mixGain.gain.value = 1;
 
-        // Smooth peaks before speakers + record (loud talk was brick-wall clipping).
+        // Safety limiter before speakers + recorder.
         const limiter = audioContext.createDynamicsCompressor();
-        limiter.threshold.value = -12;
-        limiter.knee.value = 18;
-        limiter.ratio.value = 8;
+        limiter.threshold.value = -6;
+        limiter.knee.value = 6;
+        limiter.ratio.value = 12;
         limiter.attack.value = 0.003;
-        limiter.release.value = 0.18;
+        limiter.release.value = 0.12;
 
         const inputAnalyser = audioContext.createAnalyser();
         inputAnalyser.fftSize = 2048;
@@ -234,32 +313,29 @@ export default function useAudioPipeline(wsHook) {
         outputAnalyser.smoothingTimeConstant = 0.82;
         outputAnalyserRef.current = outputAnalyser;
 
-        const recordDest = audioContext.createMediaStreamDestination();
-        recordDestRef.current = recordDest;
-
-        // Mic → gate → analyser / capture / wet monitor
+        // Mic → gate → { meter, server capture, local engine }
         source.connect(gateNode);
         gateNode.connect(inputAnalyser);
         inputAnalyser.connect(captureNode);
         captureNode.connect(captureSink);
         captureSink.connect(audioContext.destination);
 
-        gateNode.connect(monitorNode);
-        monitorNode.connect(monitorGain);
-        monitorGain.connect(mixGain);
+        gateNode.connect(engineNode);
+        engineNode.connect(engineGain);
+        engineGain.connect(mixGain);
 
         playbackNode.connect(playbackGain);
         playbackGain.connect(mixGain);
 
+        // Voice bus → limiter → meter → speaker switch. The recorder taps the
+        // bus before the speaker switch, so takes are never silent.
         mixGain.connect(limiter);
         limiter.connect(outputAnalyser);
-        outputAnalyser.connect(audioContext.destination);
-        limiter.connect(recordDest);
+        outputAnalyser.connect(speakerGain);
+        speakerGain.connect(audioContext.destination);
 
-        // DSP preview by default; App may switch to 'rvc'. Respect Hear myself.
         applyOutputGains();
 
-        // Reliable WAV capture of what you hear (after limiter).
         const recProc = audioContext.createScriptProcessor(4096, 1, 1);
         recordProcessorRef.current = recProc;
         const recSink = audioContext.createGain();
@@ -269,12 +345,7 @@ export default function useAudioPipeline(wsHook) {
         recSink.connect(audioContext.destination);
         recProc.onaudioprocess = (event) => {
           if (!recordingRef.current) return;
-          const input = event.inputBuffer.getChannelData(0);
-          // Soft-clip copy so a single loud burst can't trash the whole take.
-          const copy = new Float32Array(input.length);
-          for (let i = 0; i < input.length; i++) {
-            copy[i] = Math.tanh(input[i]);
-          }
+          const copy = new Float32Array(event.inputBuffer.getChannelData(0));
           recordChunksRef.current.push(copy);
           recordSamplesRef.current += copy.length;
         };
@@ -282,7 +353,8 @@ export default function useAudioPipeline(wsHook) {
         seqNumRef.current = 0;
         captureNode.port.onmessage = (event) => {
           const buffer = event.data;
-          if (buffer instanceof Float32Array) {
+          // Only stream to the server while its model is the active voice.
+          if (buffer instanceof Float32Array && listenModeRef.current === 'rvc') {
             wsHook.sendAudio(buffer, seqNumRef.current++);
           }
         };
@@ -385,8 +457,9 @@ export default function useAudioPipeline(wsHook) {
       captureSinkRef,
       playbackNodeRef,
       playbackGainRef,
-      monitorNodeRef,
-      monitorGainRef,
+      engineNodeRef,
+      engineGainRef,
+      speakerGainRef,
       inputAnalyserRef,
       outputAnalyserRef,
       recordProcessorRef,
@@ -408,12 +481,14 @@ export default function useAudioPipeline(wsHook) {
     captureNodeRef.current = null;
     playbackNodeRef.current = null;
     playbackGainRef.current = null;
-    monitorNodeRef.current = null;
-    monitorGainRef.current = null;
+    engineNodeRef.current = null;
+    engineGainRef.current = null;
+    speakerGainRef.current = null;
     inputAnalyserRef.current = null;
     outputAnalyserRef.current = null;
-    recordDestRef.current = null;
     recordProcessorRef.current = null;
+    setVoicePitchHz(0);
+    setEngineLatencyMs(0);
 
     wsHook.setOnAudioReceived(null);
     setInputLevel(0);
@@ -444,7 +519,10 @@ export default function useAudioPipeline(wsHook) {
     startRecording,
     stopRecording,
     discardRecording,
-    setMonitorParams,
+    setEngineParams,
+    getMedianPitch,
+    voicePitchHz,
+    engineLatencyMs,
     setGateParams,
     setListenMode,
     hearMyself,

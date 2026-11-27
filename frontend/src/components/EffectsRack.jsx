@@ -44,7 +44,10 @@ function EffectCard({ def, state, onChange }) {
           <p className={`truncate text-sm font-semibold ${enabled ? 'text-[color:var(--ink-text)]' : 'text-[color:var(--muted)]'}`}>
             {def.label}
           </p>
-          <p className="truncate text-[10px] text-[color:var(--muted)]">{def.tagline}</p>
+          <p className="truncate text-[10px] text-[color:var(--muted)]">
+            {def.tagline}
+            {def.localOnly ? ' · on-device only' : ''}
+          </p>
         </div>
         <Toggle
           enabled={enabled}
@@ -151,8 +154,8 @@ export default function EffectsRack({
       </div>
 
       <p className="mt-2 text-xs text-[color:var(--muted)]">
-        Runs on the server after model inference — works with or without a voice model.
-        The noise gate runs on the mic signal before conversion.
+        Runs live in your browser, in order from top-left to bottom-right. With an AI model
+        active the same chain runs on the server after the model.
       </p>
 
       <div className="mt-4">{grid}</div>
