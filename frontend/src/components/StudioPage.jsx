@@ -572,6 +572,11 @@ export default function StudioPage({
                   ))}
                 </select>
               </div>
+              {devices.error && (
+                <p className="mt-2 text-sm text-danger-soft" role="alert">
+                  {devices.error}
+                </p>
+              )}
               <fieldset className="mt-3 space-y-2" disabled={live}>
                 <legend className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
                   Mic clean-up

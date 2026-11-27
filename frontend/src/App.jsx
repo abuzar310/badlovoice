@@ -10,7 +10,8 @@ import StudioPage from './components/StudioPage';
 import useWebSocket from './hooks/useWebSocket';
 import useAudioPipeline from './hooks/useAudioPipeline';
 import useAudioDevices from './hooks/useAudioDevices';
-import { getActiveModel, fetchConfig } from './lib/api';
+import useServerStatus from './hooks/useServerStatus';
+import { getActiveModel, fetchConfig, getServerState, subscribeServerState } from './lib/api';
 import { applyConfig } from './lib/constants';
 import { defaultEffects, effectsFromPreset } from './lib/effects';
 import {
@@ -134,6 +135,7 @@ function loadInitialEffects() {
 }
 
 export default function App() {
+  const serverOnline = useServerStatus().online;
   const wsHook = useWebSocket();
   const pipeline = useAudioPipeline(wsHook);
   const devices = useAudioDevices();
@@ -265,26 +267,28 @@ export default function App() {
 
   useEffect(() => {
     const storedConfig = readStored(GLOBAL_SETTINGS_STORAGE_KEY);
+    const loadConfig = () =>
+      fetchConfig()
+        .then((cfg) => mergeRuntimeConfig(cfg, storedConfig))
+        .catch(() => mergeRuntimeConfig({}, storedConfig))
+        .then((nextRuntimeConfig) => {
+          applyConfig({
+            sample_rate: nextRuntimeConfig.sampleRate,
+            chunk_size: nextRuntimeConfig.chunkSize,
+          });
+          setRuntimeConfig(nextRuntimeConfig);
+        });
 
-    fetchConfig()
-      .then((cfg) => {
-        const nextRuntimeConfig = mergeRuntimeConfig(cfg, storedConfig);
-        applyConfig({
-          sample_rate: nextRuntimeConfig.sampleRate,
-          chunk_size: nextRuntimeConfig.chunkSize,
-        });
-        setRuntimeConfig(nextRuntimeConfig);
-      })
-      .catch(() => {
-        const nextRuntimeConfig = mergeRuntimeConfig({}, storedConfig);
-        applyConfig({
-          sample_rate: nextRuntimeConfig.sampleRate,
-          chunk_size: nextRuntimeConfig.chunkSize,
-        });
-        setRuntimeConfig(nextRuntimeConfig);
-      })
-      .finally(() => connect());
+    loadConfig().finally(() => connect());
+    // A server started after the page loaded: read its config then.
+    let lastState = getServerState();
+    const unsubscribe = subscribeServerState(() => {
+      const state = getServerState();
+      if (state === 'online' && lastState !== 'online') loadConfig();
+      lastState = state;
+    });
     return () => {
+      unsubscribe();
       disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -342,6 +346,20 @@ export default function App() {
 
   const handleEffectsChange = useCallback((nextEffects) => {
     setActivePresetId(null);
+    // The gate lives in extras (it also drives the mic-side gate), so the
+    // rack's gate switch and threshold are routed there.
+    const gate = nextEffects?.gate;
+    if (gate) {
+      setExtras((prev) => {
+        const enabled = Boolean(gate.enabled);
+        const threshold = Number(gate.threshold);
+        const nextThreshold = Number.isFinite(threshold) ? threshold : prev.vadThresholdDb;
+        if (enabled === Boolean(prev.blockBackground) && nextThreshold === prev.vadThresholdDb) {
+          return prev;
+        }
+        return { ...prev, blockBackground: enabled, vadEnabled: enabled, vadThresholdDb: nextThreshold };
+      });
+    }
     setEffects(nextEffects);
   }, []);
 
@@ -574,28 +592,21 @@ export default function App() {
             <p className="mt-1 max-w-2xl text-sm text-muted">
               Load RVC (.pth) or ONNX voices, activate one for live conversion, then return to Studio and Start.
             </p>
-            <div className="mt-4 flex flex-wrap gap-3 text-sm">
-              <div className="rounded-xl border border-line bg-surface px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-muted">Active</p>
-                <p className="font-semibold">{activeModel || 'None · built-in voice engine'}</p>
-              </div>
-              <div className="rounded-xl border border-line bg-surface px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-muted">Torch</p>
-                <p className="font-semibold">
-                  {runtimeConfig.runtime?.torch?.available ? 'Ready' : 'Unavailable'}
-                </p>
-              </div>
-              <div className="rounded-xl border border-line bg-surface px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-muted">ONNX</p>
-                <p className="font-semibold">
-                  {runtimeConfig.runtime?.onnx?.available ? 'Ready' : 'Unavailable'}
-                </p>
-              </div>
-              <div className="rounded-xl border border-line bg-surface px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-muted">Sample rate</p>
-                <p className="font-semibold">{runtimeConfig.sampleRate} Hz</p>
-              </div>
-            </div>
+            {serverOnline && (
+              <dl className="mt-4 flex flex-wrap gap-3 text-sm">
+                {[
+                  ['Active model', activeModel || 'None'],
+                  ['PyTorch', runtimeConfig.runtime?.torch?.available ? 'Ready' : 'Not installed'],
+                  ['ONNX', runtimeConfig.runtime?.onnx?.available ? 'Ready' : 'Not installed'],
+                  ['Sample rate', `${runtimeConfig.sampleRate} Hz`],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-line bg-surface px-3 py-2">
+                    <dt className="text-xs text-muted">{label}</dt>
+                    <dd className="font-semibold">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
           </header>
           <SlotBay activeModel={activeModel} onActiveModelChange={setActiveModel} />
           <ModelManager

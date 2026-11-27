@@ -449,7 +449,10 @@ export default function useAudioPipeline(wsHook) {
         if (err.name === 'NotReadableError') {
           throw new Error('Microphone is in use by another app.');
         }
-        throw err;
+        if (err.name === 'SecurityError' || !navigator.mediaDevices?.getUserMedia) {
+          throw new Error('This page cannot use the microphone. Open it over https or on localhost.');
+        }
+        throw new Error('Could not start the microphone. Check that one is connected, then press Start again.');
       }
     },
     [wsHook, updateLevels, applyOutputGains]
