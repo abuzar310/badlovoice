@@ -22,8 +22,13 @@ async def list_models(request: Request) -> list[dict]:
     return manager.list_models()
 
 
+# The routes below are plain `def` on purpose: FastAPI runs those on a worker
+# thread. Copying gigabytes to disk, loading a model, or waiting for a running
+# inference to finish must not stall the event loop that is streaming audio.
+
+
 @router.post("/upload")
-async def upload_model(request: Request, file: UploadFile) -> dict:
+def upload_model(request: Request, file: UploadFile) -> dict:
     """Upload a new model file (.onnx or .pth)."""
     manager = _get_manager(request)
 
@@ -31,7 +36,7 @@ async def upload_model(request: Request, file: UploadFile) -> dict:
         raise HTTPException(status_code=400, detail="No filename provided")
 
     try:
-        meta = await manager.upload_model(file.filename, file)
+        meta = manager.upload_model(file.filename, file.file)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -42,7 +47,7 @@ async def upload_model(request: Request, file: UploadFile) -> dict:
 
 
 @router.delete("/{name}")
-async def delete_model(request: Request, name: str) -> dict:
+def delete_model(request: Request, name: str) -> dict:
     """Delete a model by name."""
     manager = _get_manager(request)
 
@@ -58,7 +63,7 @@ async def delete_model(request: Request, name: str) -> dict:
 
 
 @router.post("/{name}/activate")
-async def activate_model(request: Request, name: str) -> dict:
+def activate_model(request: Request, name: str) -> dict:
     """Activate a model for voice conversion."""
     manager = _get_manager(request)
 
@@ -73,7 +78,7 @@ async def activate_model(request: Request, name: str) -> dict:
 
 
 @router.post("/deactivate")
-async def deactivate_model(request: Request) -> dict:
+def deactivate_model(request: Request) -> dict:
     """Deactivate the currently active model."""
     manager = _get_manager(request)
     manager.deactivate_model()

@@ -1,8 +1,20 @@
-import React from 'react';
+import React, { useId } from 'react';
+import { EFFECT_DEFS } from '../lib/effects';
+
+// The threshold range the effect rack and both engines use for the gate.
+const RANGE = EFFECT_DEFS.find((def) => def.key === 'gate').params.find(
+  (param) => param.key === 'threshold'
+);
+// What the audio pipeline reports until the gate has measured something.
+const NO_READING_DB = -80;
+
+const toPercent = (db) =>
+  Math.max(0, Math.min(100, ((db - RANGE.min) / (RANGE.max - RANGE.min)) * 100));
 
 /**
- * First-class control: mute mic when you are not talking so background
- * voices / room noise do not enter the voice changer.
+ * The noise gate: mutes the mic while the user is quiet so room noise and
+ * background voices are not changed along with theirs. The meter under the
+ * slider is on the same scale, so the mic level can be read against the line.
  */
 export default function BackgroundBlocker({
   enabled,
@@ -12,72 +24,80 @@ export default function BackgroundBlocker({
   onChange,
   disabled,
 }) {
-  const levelPct = Math.max(0, Math.min(100, ((levelDb ?? -80) + 80) * (100 / 70)));
-  const threshPct = Math.max(0, Math.min(100, (thresholdDb + 80) * (100 / 70)));
+  const id = useId();
+  const measuring = gateOpen || (levelDb ?? NO_READING_DB) !== NO_READING_DB;
+
+  let status = 'Closed. Your mic is muted.';
+  if (!enabled) status = 'Off. Everything your mic picks up goes through.';
+  else if (!measuring) status = 'Press Start to see your mic level against the line.';
+  else if (gateOpen) status = 'Open. Your voice is going through.';
 
   return (
-    <section className="panel border-[#c4783a]/35 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="panel-kicker">Step 1 · Clean input</p>
-          <h2 className="panel-title">Block background voice</h2>
-          <p className="mt-1 max-w-xl text-sm text-[color:var(--muted)]">
-            Mutes the mic when you stop talking. Cuts room noise and other people in the background
-            before pitch / FX run.
+    <section className="panel p-5 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0 flex-1 basis-64">
+          <h2 id={`${id}-title`} className="panel-title">
+            Noise gate
+          </h2>
+          <p className="mt-1 max-w-[65ch] text-pretty text-sm text-muted">
+            Mutes your mic while you are quiet, so room noise and other voices in the background
+            are not changed along with yours.
           </p>
         </div>
         <button
           type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-labelledby={`${id}-title`}
           disabled={disabled}
           onClick={() => onChange({ enabled: !enabled })}
-          className={`rounded px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] transition ${
-            enabled
-              ? 'border border-[#6ee7b7]/50 bg-[#6ee7b7] text-[#071416]'
-              : 'border border-[color:var(--line)] bg-[color:var(--surface)] text-[color:var(--muted)]'
-          }`}
-        >
-          {enabled ? 'Blocking on' : 'Blocking off'}
-        </button>
+          className="switch mt-1"
+        />
       </div>
 
-      <div className={`mt-4 ${enabled ? '' : 'opacity-40'}`}>
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--muted)]">
-            Sensitivity
-          </span>
-          <span className="font-mono text-xs text-[#6ee7b7]">
-            {thresholdDb} dB · {enabled ? (gateOpen ? 'OPEN — your voice' : 'CLOSED — background muted') : 'bypassed'}
-          </span>
+      <div className="mt-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <label htmlFor={`${id}-level`} className="field-label">
+            Opens when you are louder than
+          </label>
+          <output htmlFor={`${id}-level`} className="font-mono text-sm tabular-nums text-ink">
+            {thresholdDb} dB
+          </output>
         </div>
         <input
+          id={`${id}-level`}
           type="range"
-          min={-75}
-          max={-25}
-          step={1}
+          min={RANGE.min}
+          max={RANGE.max}
+          step={RANGE.step}
           value={thresholdDb}
           disabled={!enabled || disabled}
-          onChange={(e) => onChange({ thresholdDb: Number(e.target.value) })}
+          onChange={(event) => onChange({ thresholdDb: Number(event.target.value) })}
           className="mt-2 w-full"
         />
-        <div className="mt-1 flex justify-between text-[10px] text-[color:var(--muted)]">
-          <span>More blocking</span>
-          <span>Easier open</span>
+
+        {/* Inset by half the slider cap (12px, 20px on touch: index.css), so the line sits under it. */}
+        <div className="mx-[6px] [@media(pointer:coarse)]:mx-[10px]" aria-hidden="true">
+          <div className="relative mt-1 h-2 rounded-full bg-ink/10">
+            <div
+              className="absolute inset-y-0 left-0 rounded-full bg-mic transition-[width] duration-75 motion-reduce:transition-none"
+              style={{ width: `${enabled && measuring ? toPercent(levelDb) : 0}%` }}
+            />
+            <div
+              className="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-ink"
+              style={{ left: `${toPercent(thresholdDb)}%` }}
+            />
+          </div>
+        </div>
+        <div className="mt-2 flex justify-between gap-3">
+          <span className="text-xs text-muted">Lets more through</span>
+          <span className="text-xs text-muted">Blocks more</span>
         </div>
 
-        <div className="relative mt-4 h-3 overflow-hidden rounded-sm bg-[color:var(--surface-2)]">
-          <div
-            className="absolute inset-y-0 left-0 bg-[#3dd6e0]/35 transition-[width] duration-75"
-            style={{ width: `${levelPct}%` }}
-          />
-          <div
-            className="absolute inset-y-0 w-0.5 bg-[#c4783a]"
-            style={{ left: `${threshPct}%` }}
-            title="Gate threshold"
-          />
-        </div>
-        <p className="mt-2 text-xs text-[color:var(--muted)]">
-          Copper line = threshold. Status must say OPEN while you talk. If it stays CLOSED on your
-          voice, drag toward Easier open (right). Only tighten if background still leaks.
+        <p className="mt-3 text-sm font-medium text-ink">{status}</p>
+        <p className="mt-1 max-w-[65ch] text-xs text-muted">
+          The bar is your mic level and the line is the gate. If it cuts off quiet words, move the
+          slider left. If background noise still gets through, move it right.
         </p>
       </div>
     </section>

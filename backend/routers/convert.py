@@ -5,13 +5,18 @@ import asyncio
 import io
 import json
 import logging
+import re
+import tempfile
+import uuid
 from pathlib import Path
+from urllib.parse import quote
 
 import numpy as np
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 
 from backend.config import settings
+from backend.services.audio_processor import MAX_SAMPLE_RATE, MIN_SAMPLE_RATE
 from backend.services.dsp_effects import EffectsChain
 
 logger = logging.getLogger(__name__)
@@ -21,25 +26,65 @@ router = APIRouter(prefix="/api/convert", tags=["convert"])
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB
 
 
+def _check_format(sample_rate: int, frames: int) -> None:
+    """Refuse audio the chain should not be asked to render."""
+    if not MIN_SAMPLE_RATE <= sample_rate <= MAX_SAMPLE_RATE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported sample rate {sample_rate} Hz "
+            f"(allowed: {MIN_SAMPLE_RATE}-{MAX_SAMPLE_RATE} Hz)",
+        )
+    if frames > settings.MAX_CONVERT_SECONDS * sample_rate:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio too long (max {settings.MAX_CONVERT_SECONDS // 60} minutes)",
+        )
+
+
 def _load_audio(data: bytes, filename: str) -> tuple[np.ndarray, int]:
     """Decode an uploaded audio file to mono float32 at its native rate."""
     import soundfile as sf
 
     try:
-        audio, sr = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
-        audio = audio.mean(axis=1).astype(np.float32)
-        return audio, int(sr)
+        with sf.SoundFile(io.BytesIO(data)) as source:
+            sample_rate = int(source.samplerate)
+            # Checked on the header, before decoding: a few hundred kB of
+            # compressed silence expands to gigabytes of samples.
+            _check_format(sample_rate, source.frames)
+            audio = source.read(dtype="float32", always_2d=True)
+        return audio.mean(axis=1).astype(np.float32), sample_rate
+    except HTTPException:
+        raise
     except Exception:
-        pass
+        pass  # not something libsndfile reads — try librosa below
 
-    # Fall back to librosa (handles mp3 and other codecs via audioread).
+    # librosa reaches further codecs (m4a, ...) through audioread, which needs
+    # a real file on disk rather than an in-memory buffer.
+    suffix = Path(filename).suffix
     try:
         import librosa
 
-        audio, sr = librosa.load(io.BytesIO(data), sr=None, mono=True)
-        return audio.astype(np.float32), int(sr)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / ("upload" + (suffix if re.fullmatch(r"\.\w{1,8}", suffix) else ""))
+            path.write_bytes(data)
+            audio, sample_rate = librosa.load(
+                path, sr=None, mono=True, duration=settings.MAX_CONVERT_SECONDS + 1
+            )
     except Exception as exc:
         raise ValueError(f"Could not decode audio file '{filename}': {exc}") from exc
+    _check_format(int(sample_rate), len(audio))
+    return audio.astype(np.float32), int(sample_rate)
+
+
+def _attachment(filename: str) -> str:
+    """Content-Disposition for a download whose name may hold any characters.
+
+    Header values are latin-1 and a quote would end the quoted name, so
+    ``filename`` is an ASCII stand-in and ``filename*`` (RFC 5987) carries the
+    real name.
+    """
+    fallback = re.sub(r"[^A-Za-z0-9._ -]", "_", filename)
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(filename, safe='')}"
 
 
 def _encode_wav(audio: np.ndarray, sample_rate: int) -> bytes:
@@ -65,11 +110,14 @@ def _render(
 
     model_applied = False
     if use_model and model_manager.get_active_model() is not None:
+        # One model stream per job: a shared id would let the tail of one
+        # file become the model's context for the start of another.
+        stream_id = f"convert-{uuid.uuid4().hex}"
         try:
             processed = model_manager.process_audio(
                 processed,
                 {
-                    "stream_id": "__convert__",
+                    "stream_id": stream_id,
                     "pitch_shift": pitch_shift,
                     "f0_method": f0_method,
                     "sample_rate": sample_rate,
@@ -77,7 +125,7 @@ def _render(
             )
             model_applied = True
         finally:
-            model_manager.release_stream("__convert__")
+            model_manager.release_stream(stream_id)
 
     if not model_applied and abs(pitch_shift) > 1e-3:
         processed = chain.apply_pitch(processed, pitch_shift)
@@ -121,12 +169,6 @@ async def convert_file(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    max_samples = settings.MAX_CONVERT_SECONDS * sample_rate
-    if len(audio) > max_samples:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Audio too long (max {settings.MAX_CONVERT_SECONDS // 60} minutes)",
-        )
     if len(audio) == 0:
         raise HTTPException(status_code=400, detail="Audio file contains no samples")
 
@@ -151,5 +193,5 @@ async def convert_file(
     return Response(
         content=wav_bytes,
         media_type="audio/wav",
-        headers={"Content-Disposition": f'attachment; filename="{out_name}"'},
+        headers={"Content-Disposition": _attachment(out_name)},
     )

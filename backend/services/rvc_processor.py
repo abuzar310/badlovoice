@@ -72,7 +72,7 @@ class RvcProcessor:
         if not self._hubert_path.exists():
             raise FileNotFoundError(
                 f"HuBERT model not found: {self._hubert_path}. "
-                "Set OVC_HUBERT_PATH to a valid hubert_base.pt file."
+                "Set SHIFTBOOTH_HUBERT_PATH to a valid hubert_base.pt file."
             )
 
         self._runtime = self._select_runtime_config()
@@ -335,10 +335,11 @@ class RvcProcessor:
 
             chunk_16k = resample_audio(audio.astype(np.float32), sample_rate, 16000)
             if self._context_samples_16k > 0:
-                state.audio_16k = np.concatenate([state.audio_16k, chunk_16k]).astype(np.float32)
-                if len(state.audio_16k) > self._context_samples_16k:
-                    state.audio_16k = state.audio_16k[-self._context_samples_16k :]
-                audio_for_inference = state.audio_16k
+                # Infer on the previous tail plus the whole new chunk, then keep
+                # the new tail. Trimming to the context length first would hand
+                # the model less audio than the chunk and leave gaps of silence.
+                audio_for_inference = np.concatenate([state.audio_16k, chunk_16k]).astype(np.float32)
+                state.audio_16k = audio_for_inference[-self._context_samples_16k :]
             else:
                 audio_for_inference = chunk_16k
 
@@ -385,8 +386,10 @@ class RvcProcessor:
         """Release cached context for one audio stream."""
         if stream_id is None:
             return
-        with self._lock:
-            self._stream_states.pop(str(stream_id), None)
+        # Deliberately not under self._lock: a disconnect calls this from the
+        # event loop, and it must not wait out another stream's inference (or
+        # a whole-file conversion). A single dict.pop is atomic.
+        self._stream_states.pop(str(stream_id), None)
 
     def warm_up(self, sample_rate: int = 40000, chunk_size: int = 4096) -> None:
         """Run one silent inference so the first live chunk does not pay setup cost."""

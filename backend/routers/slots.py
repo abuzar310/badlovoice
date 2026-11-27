@@ -36,9 +36,13 @@ async def bind_slot(request: Request, index: int, body: BindBody) -> dict:
 
 
 @router.post("/{index}/activate")
-async def activate_slot(request: Request, index: int) -> dict:
+def activate_slot(request: Request, index: int) -> dict:
+    # Plain `def`: loading a model takes seconds and must run on a worker
+    # thread, not on the event loop that is streaming audio.
     try:
         return _get_slots(request).activate(index)
+    except ValueError as exc:  # slot index out of range
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:

@@ -10,6 +10,12 @@ from scipy.signal import resample as scipy_resample
 HEADER_SIZE = 8  # bytes
 HEADER_FORMAT = "<II"  # two uint32 little-endian
 
+# Sample rates accepted from clients (live stream config and uploaded files).
+# Delay lines are sized from the rate, so an unchecked value is an unbounded
+# allocation.
+MIN_SAMPLE_RATE = 8000
+MAX_SAMPLE_RATE = 192000
+
 
 def bytes_to_audio(data: bytes) -> tuple[np.ndarray, int, int]:
     """Parse a binary audio frame into samples and metadata.

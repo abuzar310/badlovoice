@@ -2,14 +2,19 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Shiftbooth settings. Env prefix SHIFTBOOTH_ (OVC_ still accepted via aliases)."""
+    """Backend settings, read from SHIFTBOOTH_* environment variables or .env."""
 
     MODELS_DIR: str = "models"
-    HOST: str = "0.0.0.0"
+    # Loopback by default: the API has no login and can load model files, so
+    # exposing it to the network (0.0.0.0) has to be a deliberate choice.
+    HOST: str = "127.0.0.1"
     PORT: int = 8000
     SAMPLE_RATE: int = 40000
     CHUNK_SIZE: int = 4096
-    CORS_ORIGINS: list[str] = ["*"]
+    # Extra web origins allowed to call the API, as a JSON list, e.g.
+    # '["https://voice.example.com"]'. Pages served by this server or from this
+    # machine never need listing. '["*"]' turns the cross-site check off.
+    CORS_ORIGINS: list[str] = []
     LOG_LEVEL: str = "info"
     HUBERT_PATH: str = "models/assets/hubert_base.pt"
     RMVPE_ROOT: str = "models/assets/rmvpe"

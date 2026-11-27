@@ -157,10 +157,13 @@ class PresetStore:
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
             if isinstance(data, list):
+                # One malformed entry must not take the valid ones down with it.
                 self._presets = {
                     p["id"]: p
                     for p in data
-                    if isinstance(p, dict) and "id" in p and "settings" in p
+                    if isinstance(p, dict)
+                    and isinstance(p.get("id"), str)
+                    and isinstance(p.get("settings"), dict)
                 }
             logger.info("Loaded %d user preset(s) from %s", len(self._presets), self._path)
         except Exception:
@@ -191,22 +194,36 @@ class PresetStore:
         if not isinstance(settings, dict):
             raise ValueError("Preset settings must be an object")
 
-        preset_id = f"user-{_slugify(name)}"
-        preset = {
-            "id": preset_id,
+        try:
+            pitch_shift = float(settings.get("pitch_shift", 0) or 0)
+            formant_shift = float(settings.get("formant_shift", 0) or 0)
+        except TypeError as exc:  # e.g. a list; a bad string is already a ValueError
+            raise ValueError("pitch_shift and formant_shift must be numbers") from exc
+        body = {
             "name": name,
             "emoji": (emoji or "⭐")[:4],
             "description": "Custom preset",
             "settings": {
-                "pitch_shift": float(settings.get("pitch_shift", 0) or 0),
-                "formant_shift": float(settings.get("formant_shift", 0) or 0),
+                "pitch_shift": pitch_shift,
+                "formant_shift": formant_shift,
                 "effects": settings.get("effects") if isinstance(settings.get("effects"), dict) else {},
             },
         }
+        # Raises ValueError for NaN / Infinity, which are not valid JSON and
+        # would otherwise be written into the file.
+        json.dumps(body, allow_nan=False)
 
         with self._lock:
+            # Saving under the same name replaces that preset. A different
+            # name that merely slugs the same ("My Voice" / "my voice!") gets
+            # its own id instead of silently overwriting the other one.
+            base = f"user-{_slugify(name)}"
+            preset_id, n = base, 2
+            while preset_id in self._presets and self._presets[preset_id].get("name") != name:
+                preset_id, n = f"{base}-{n}", n + 1
             if preset_id not in self._presets and len(self._presets) >= MAX_USER_PRESETS:
                 raise ValueError(f"Preset limit reached ({MAX_USER_PRESETS})")
+            preset = {"id": preset_id, **body}
             self._presets[preset_id] = preset
             self._flush_locked()
         logger.info("Saved user preset: %s", preset_id)

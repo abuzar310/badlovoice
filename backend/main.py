@@ -1,13 +1,18 @@
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import Headers
+from starlette.websockets import WebSocketClose
 
 from backend.config import settings
 from backend.routers import convert, models, presets, profiles, slots, websocket
+from backend.services import model_manager
 from backend.services.model_manager import ModelManager
 from backend.services.preset_store import PresetStore
 from backend.services.profile_store import LATENCY_MODES, ProfileStore
@@ -117,7 +122,9 @@ async def lifespan(app: FastAPI):
     app.state.slot_manager = SlotManager(settings.SLOTS_PATH, manager)
     app.state.profile_store = ProfileStore(settings.PROFILES_PATH)
 
-    logger.info("Ready on %s:%d", settings.HOST, settings.PORT)
+    # No address here: under the uvicorn CLI the bound host/port are uvicorn's,
+    # not settings.HOST/PORT, and uvicorn logs the real one itself.
+    logger.info("Ready")
     yield
 
     logger.info("Shutting down")
@@ -131,13 +138,108 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "::1"}
+MAX_JSON_BODY = 1024 * 1024  # settings payloads are a few kB
+FORM_OVERHEAD = 1024 * 1024  # multipart boundaries and the small form fields
+
+
+def _origin_allowed(origin: str, host: str) -> bool:
+    """True when a browser request from `origin` may use this server."""
+    if "*" in settings.CORS_ORIGINS or origin in settings.CORS_ORIGINS:
+        return True
+    try:
+        parts = urlsplit(origin)
+        hostname = parts.hostname
+    except ValueError:
+        return False
+    if not parts.netloc or "@" in parts.netloc:
+        return False  # "null", junk, or credentials no browser puts in an Origin
+    # Served by this very server (same host:port), or by something running on
+    # this machine such as the Vite dev server that proxies to us.
+    return parts.netloc.lower() == host.lower() or hostname in LOCAL_HOSTNAMES
+
+
+def _body_limit(path: str) -> int:
+    """Largest request body a path accepts; read per request so limits stay in one place."""
+    if path == "/api/models/upload":
+        return model_manager.MAX_MODEL_SIZE + FORM_OVERHEAD
+    if path.rstrip("/") == "/api/convert":
+        return convert.MAX_UPLOAD_BYTES + FORM_OVERHEAD
+    return MAX_JSON_BODY
+
+
+class RequestGuard:
+    """Front-door checks applied to every HTTP request and WebSocket handshake.
+
+    * Requests from other sites are refused. The API has no login, so a web
+      page the user merely has open must not be able to drive it (upload and
+      load a model file, delete models, open the audio socket). Browsers label
+      such requests with an Origin header; requests without one (curl, scripts,
+      ordinary page loads) are not affected.
+    * Request bodies are capped — by declared length and by bytes actually
+      received — so the size limits hold before anything is buffered to disk
+      or memory.
+    """
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        headers = Headers(scope=scope)
+        origin = headers.get("origin")
+        if origin is not None and not _origin_allowed(origin, headers.get("host", "")):
+            logger.warning(
+                "Refused cross-site %s request from origin %r "
+                "(list it in SHIFTBOOTH_CORS_ORIGINS if it is yours)",
+                scope["type"],
+                origin,
+            )
+            if scope["type"] == "websocket":
+                refusal = WebSocketClose(code=1008, reason="Cross-site connection refused")
+            else:
+                refusal = JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
+            await refusal(scope, receive, send)
+            return
+
+        if scope["type"] == "http":
+            limit = _body_limit(scope["path"])
+            declared = headers.get("content-length", "")
+            if declared.isdigit() and int(declared) > limit:
+                too_large = JSONResponse({"detail": "Request body too large"}, status_code=413)
+                await too_large(scope, receive, send)
+                return
+
+            received = 0
+
+            async def capped_receive():
+                # Counts what actually arrives: a chunked body declares no length.
+                nonlocal received
+                message = await receive()
+                if message["type"] == "http.request":
+                    received += len(message.get("body", b""))
+                    if received > limit:
+                        raise HTTPException(status_code=413, detail="Request body too large")
+                return message
+
+            await self.app(scope, capped_receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
+
+# No allow_credentials: nothing here uses cookies, and combined with a wildcard
+# origin it would let any site make credentialed calls.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestGuard)  # added last = outermost: runs before CORS
 
 
 @app.get("/health")

@@ -2,49 +2,77 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
-    />
-    <script>
-      (function () {
-        try {
-          var saved = localStorage.getItem('badlovoice_layout_v2');
-          var ua = navigator.userAgent || '';
-          var likelyNative = /; wv\)/i.test(ua);
-          var layout =
-            saved === 'desktop' || saved === 'phone' || saved === 'auto'
-              ? saved
-              : likelyNative
-                ? 'phone'
-                : window.matchMedia('(min-width: 1024px)').matches
-                  ? 'auto'
-                  : 'phone';
-          // Android WebView: never boot into pannable "auto"/desktop from old prefs.
-          if (likelyNative && layout !== 'desktop') layout = 'phone';
-          document.documentElement.setAttribute('data-layout', layout);
-          localStorage.removeItem('badlovoice_layout');
-        } catch (e) {
-          document.documentElement.setAttribute('data-layout', 'phone');
-        }
-      })();
-    </script>
+    <!-- viewport-fit=cover lets the page use the notch area; index.css pads with the safe-area insets.
+         Pinch zoom is left on (do not add user-scalable=no). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>BadloVoice — live voice changer</title>
     <meta
       name="description"
-      content="BadloVoice — change your voice live. Simple pitch presets for phone and desktop."
+      content="Change your voice live: pitch, formant and effect presets, processed on your own device. Works on phone and desktop, no server needed."
     />
-    <meta name="theme-color" content="#efe4d4" />
+    <meta name="application-name" content="BadloVoice" />
+    <!-- Colour of the browser's own bars. Matches the app's top bar (--surface);
+         the script below and the theme button switch it for the dark theme. -->
+    <meta name="theme-color" content="#faf3e8" />
+    <script>
+      // Runs before the first paint so neither the theme nor the layout flashes.
+      (function () {
+        var root = document.documentElement;
+
+        var theme = 'light';
+        try {
+          if (localStorage.getItem('badlovoice_theme') === 'dark') theme = 'dark';
+        } catch (e) {}
+        root.setAttribute('data-theme', theme);
+        if (theme === 'dark') {
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', '#1c1a24');
+        }
+
+        // phone: stacked. auto: responsive. desktop: the wide canvas, only when switched on.
+        // The Android app (a WebView) always starts stacked. Layout.jsx keeps this in step with the window.
+        var layout = 'phone';
+        try {
+          var forced = false;
+          try {
+            forced = localStorage.getItem('badlovoice_layout_v2') === 'desktop';
+          } catch (e) {}
+          var nativeApp = /; wv\)/i.test(navigator.userAgent || '');
+          if (forced) layout = 'desktop';
+          else if (!nativeApp && window.matchMedia('(min-width: 1024px)').matches) layout = 'auto';
+        } catch (e) {}
+        root.setAttribute('data-layout', layout);
+      })();
+    </script>
+    <style>
+      /* Page colour before the stylesheet arrives (--ink in index.css). */
+      html {
+        background: #efe4d4;
+      }
+      html[data-theme='dark'] {
+        background: #121018;
+      }
+    </style>
+    <!-- Fonts load without holding up the first paint; offline (the Android app) the system font is used. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
+      media="print"
+      onload="this.media='all'"
     />
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/app-icon.png" />
-    <title>BadloVoice</title>
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
+      />
+    </noscript>
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   </head>
   <body>
+    <noscript>BadloVoice needs JavaScript to run. Please turn it on and reload.</noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

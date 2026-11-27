@@ -20,15 +20,17 @@ logger = logging.getLogger(__name__)
 
 def _clipf(value, lo: float, hi: float, default: float) -> float:
     try:
-        return float(np.clip(float(value), lo, hi))
+        value = float(value)
     except (TypeError, ValueError):
         return default
+    # NaN would slip through a clamp and poison oscillator phases for good.
+    return default if math.isnan(value) else min(max(value, lo), hi)
 
 
 def _clipi(value, lo: int, hi: int, default: int) -> int:
     try:
-        return int(np.clip(int(value), lo, hi))
-    except (TypeError, ValueError):
+        return min(max(int(value), lo), hi)
+    except (TypeError, ValueError, OverflowError):  # OverflowError: int(inf)
         return default
 
 
@@ -156,13 +158,17 @@ class FormantShifter:
         shift = 2.0 ** (semitones / 12.0)
         self._in_buf = np.concatenate([self._in_buf, x.astype(np.float32)])
 
+        # Joined once after the loop: growing the FIFO per frame is quadratic
+        # and takes minutes on a whole-file render.
+        hops = [self._out_fifo]
         while len(self._in_buf) >= self.FFT:
             frame = self._in_buf[: self.FFT]
             self._in_buf = self._in_buf[self.HOP :]
             processed = self._process_frame(frame, shift)
             self._ola[: self.FFT] += processed
-            self._out_fifo = np.concatenate([self._out_fifo, self._ola[: self.HOP] / self._ola_norm])
+            hops.append(self._ola[: self.HOP] / self._ola_norm)
             self._ola = np.concatenate([self._ola[self.HOP :], np.zeros(self.HOP, dtype=np.float32)])
+        self._out_fifo = np.concatenate(hops)
 
         if len(self._out_fifo) >= n:
             out = self._out_fifo[:n]
@@ -423,7 +429,8 @@ class EqEffect:
                     _rbj_shelf(self.sr, 4000.0, high, "high"),
                 ]
             )
-            self._zi = np.zeros((self._sos.shape[0], 2))
+            if self._zi is None:  # keep the memory on a gain change: zeroing it clicks
+                self._zi = np.zeros((self._sos.shape[0], 2))
             self._gains = (low, high)
         y, self._zi = sps.sosfilt(self._sos, x, zi=self._zi)
         return y.astype(np.float32)
@@ -527,6 +534,25 @@ POST_CHAIN_ORDER = (
 
 KNOWN_EFFECTS = POST_CHAIN_ORDER + ("gate",)
 
+# How to build each effect for a given sample rate.
+_EFFECT_FACTORIES = {
+    "robot": RobotEffect,
+    "whisper": WhisperEffect,
+    "distortion": lambda sr: DistortionEffect(),
+    "bitcrush": lambda sr: BitcrushEffect(),
+    "telephone": TelephoneEffect,
+    "chorus": ChorusEffect,
+    "echo": EchoEffect,
+    "reverb": ReverbEffect,
+    "eq": EqEffect,
+    "compressor": CompressorEffect,
+    "gain": lambda sr: GainEffect(),
+    "gate": GateEffect,
+}
+
+# Pitch / formant range accepted by the chain; anything else is clamped.
+MAX_SHIFT_SEMITONES = 24.0
+
 
 class EffectsChain:
     """A stateful per-stream effect chain.
@@ -540,21 +566,22 @@ class EffectsChain:
     def __init__(self, sample_rate: int) -> None:
         self.sr = int(sample_rate)
         self._pitch = PitchShifter(self.sr)
-        self._formant = FormantShifter(self.sr)
-        self._effects = {
-            "robot": RobotEffect(self.sr),
-            "whisper": WhisperEffect(self.sr),
-            "distortion": DistortionEffect(),
-            "bitcrush": BitcrushEffect(),
-            "telephone": TelephoneEffect(self.sr),
-            "chorus": ChorusEffect(self.sr),
-            "echo": EchoEffect(self.sr),
-            "reverb": ReverbEffect(self.sr),
-            "eq": EqEffect(self.sr),
-            "compressor": CompressorEffect(self.sr),
-            "gain": GainEffect(),
-            "gate": GateEffect(self.sr),
-        }
+        # Built when switched on, dropped when switched off (see _live).
+        self._formant: FormantShifter | None = None
+        self._effects: dict = {}
+
+    def _live(self, key: str, switched_on: bool):
+        """The effect's instance while it is switched on, else None.
+
+        A switched-off effect is dropped, so switching it back on starts clean
+        instead of replaying whatever was left in its delay lines.
+        """
+        if not switched_on:
+            self._effects.pop(key, None)
+            return None
+        if key not in self._effects:
+            self._effects[key] = _EFFECT_FACTORIES[key](self.sr)
+        return self._effects[key]
 
     @staticmethod
     def _enabled(effects: dict, key: str) -> dict | None:
@@ -576,17 +603,22 @@ class EffectsChain:
 
     def pre_process(self, audio: np.ndarray, effects: dict) -> np.ndarray:
         """Input-side conditioning applied before model inference."""
+        # Samples arrive straight off the wire; one NaN/Inf would stick in
+        # every filter memory downstream for the rest of the stream.
+        audio = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
         params = self._enabled(effects, "gate")
-        if params is None or len(audio) == 0:
+        gate = self._live("gate", params is not None)
+        if gate is None or len(audio) == 0:
             return audio
         try:
-            return self._effects["gate"].process(audio, params)
+            return gate.process(audio, params)
         except Exception:
             logger.exception("Noise gate failed — passing signal through")
             return audio
 
     def apply_pitch(self, audio: np.ndarray, semitones: float) -> np.ndarray:
         """Model-free pitch shift used in DSP passthrough mode."""
+        semitones = _clipf(semitones, -MAX_SHIFT_SEMITONES, MAX_SHIFT_SEMITONES, 0.0)
         try:
             return self._pitch.process(audio, semitones)
         except Exception:
@@ -599,27 +631,28 @@ class EffectsChain:
         """Output-side chain: formant shift then the ordered effect rack."""
         if len(audio) == 0:
             return audio
-        y = audio
+        # Model output can carry NaN (half-precision overflow); keep it out of the rack.
+        y = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
 
+        formant_shift = _clipf(formant_shift, -MAX_SHIFT_SEMITONES, MAX_SHIFT_SEMITONES, 0.0)
         if abs(formant_shift) > 1e-3:
+            if self._formant is None:
+                self._formant = FormantShifter(self.sr)
             try:
                 y = self._formant.process(y, formant_shift)
             except Exception:
                 logger.exception("Formant shifter failed — skipping")
+        else:
+            self._formant = None
 
-        if isinstance(effects, dict):
-            for key in POST_CHAIN_ORDER:
-                params = self._enabled(effects, key)
-                if params is None:
-                    continue
-                try:
-                    y = self._effects[key].process(y, params)
-                except Exception:
-                    logger.exception("Effect %r failed — skipping", key)
+        for key in POST_CHAIN_ORDER:
+            params = self._enabled(effects, key)
+            effect = self._live(key, params is not None)
+            if effect is None:
+                continue
+            try:
+                y = effect.process(y, params)
+            except Exception:
+                logger.exception("Effect %r failed — skipping", key)
 
-        # Makeup gain so wet output is not quieter than the mic (common "no change" complaint).
-        in_rms = float(np.sqrt(np.mean(audio.astype(np.float64) ** 2)) + 1e-9)
-        out_rms = float(np.sqrt(np.mean(y.astype(np.float64) ** 2)) + 1e-9)
-        if out_rms > 0 and in_rms / out_rms > 1.05:
-            y = y * np.float32(min(in_rms / out_rms, 4.0))
         return np.clip(y, -1.0, 1.0).astype(np.float32)

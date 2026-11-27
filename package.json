@@ -6,6 +6,7 @@
     "dev": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",
     "preview": "npm --prefix frontend run preview",
-    "server": "python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000"
+    "server": "python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000",
+    "test:backend": "python -m pytest backend/tests"
   }
 }

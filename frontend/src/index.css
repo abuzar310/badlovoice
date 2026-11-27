@@ -2,29 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Theme tokens. Components never mix with a literal white or black: they use
+ * the surface tokens below, so both themes follow from this one block.
+ * The same variables back the Tailwind colour names (tailwind.config.js).
+ *
+ * Text tokens (--ink-text, --muted, --accent-soft, --danger-soft, --success)
+ * are tuned to reach 4.5:1 on every surface and wash in their theme.
+ */
 @layer base {
   :root,
   [data-theme='light'] {
     color-scheme: light;
-    /* Classic light beige studio — coral accent for actions only */
-    --ink: #efe4d4;
+    /* Warm cream studio. Orange is for actions and "on" states only. */
+    --ink: #efe4d4; /* page */
     --surface: #faf3e8;
     --surface-2: #e9dcc8;
-    --accent: #e05528;
-    --accent-soft: #c4471f;
+    --accent: #e05528; /* fills: slider caps, meters, dots */
+    --accent-soft: #a83a16; /* accent as text */
     --ink-text: #2a231c;
-    --muted: #6a6156;
+    --muted: #625a50;
     --line: rgba(42, 35, 28, 0.14);
-    --focus-ring: #e05528;
-    --danger: #c23048;
-    --danger-soft: #8f2236;
-    --success: #2f8f5b;
+    --focus-ring: #c4471f;
+    --danger: #b92b44;
+    --danger-soft: #8f2236; /* danger as text */
+    --success: #1f7046;
     --mic: #3a6f96;
+
+    /* Raised surfaces: light surfaces get lighter as they come forward. */
+    --lift: #fff;
+    --panel: color-mix(in srgb, var(--surface) 92%, var(--lift));
+    --panel-edge: rgba(255, 255, 255, 0.55);
+    --card: color-mix(in srgb, var(--surface) 70%, var(--lift));
+    --control: color-mix(in srgb, var(--surface-2) 55%, var(--lift));
+    --control-hover: var(--surface);
+
+    /* Washes: a semantic colour tinted into the surface it sits on. */
+    --wash-base: var(--lift);
+    --wash-accent: color-mix(in srgb, var(--accent) 12%, var(--wash-base));
+    --wash-accent-strong: color-mix(in srgb, var(--accent) 18%, var(--wash-base));
+    --wash-danger: color-mix(in srgb, var(--danger) 10%, var(--wash-base));
+    --wash-danger-strong: color-mix(in srgb, var(--danger) 16%, var(--wash-base));
+
     --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-    --safe-top: env(safe-area-inset-top, 0px);
-    --safe-right: env(safe-area-inset-right, 0px);
-    --safe-bottom: env(safe-area-inset-bottom, 0px);
-    --safe-left: env(safe-area-inset-left, 0px);
+    /* Capacitor injects --safe-area-inset-* where the WebView's env() is unreliable. */
+    --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+    --safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+    --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+    --safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+
+    /* Smallest comfortable control height. Fingers get 44px (see below). */
+    --tap: 2.5rem;
+    --tap-compact: 2.25rem;
+
+    /* Stacking order, lowest to highest. */
+    --z-status-bar: 30;
+    --z-header: 40;
+    --z-modal: 50; /* the settings dialog (App.jsx) uses z-50 */
   }
 
   [data-theme='dark'] {
@@ -35,13 +69,39 @@
     --accent: #ff7a45;
     --accent-soft: #ff9a6e;
     --ink-text: #f4f0ea;
-    --muted: #9b96a8;
-    --line: rgba(255, 255, 255, 0.08);
+    --muted: #aba6b8;
+    --line: rgba(255, 255, 255, 0.1);
     --focus-ring: #ff9a6e;
-    --danger: #f43f5e;
+    --danger: #ff6680;
     --danger-soft: #ffe4e6;
     --success: #5ecf8a;
     --mic: #7eb6ff;
+
+    --panel: color-mix(in srgb, var(--surface) 92%, var(--lift));
+    --panel-edge: rgba(255, 255, 255, 0.06);
+    --card: color-mix(in srgb, var(--surface) 89%, var(--lift));
+    --control: color-mix(in srgb, var(--surface) 86%, var(--lift));
+    --control-hover: color-mix(in srgb, var(--surface) 80%, var(--lift));
+
+    --wash-base: var(--surface-2);
+    --wash-accent: color-mix(in srgb, var(--accent) 16%, var(--wash-base));
+    --wash-accent-strong: color-mix(in srgb, var(--accent) 24%, var(--wash-base));
+    --wash-danger: color-mix(in srgb, var(--danger) 16%, var(--wash-base));
+    --wash-danger-strong: color-mix(in srgb, var(--danger) 24%, var(--wash-base));
+  }
+
+  @media (pointer: coarse) {
+    :root {
+      --tap: 2.75rem;
+      --tap-compact: 2.75rem;
+    }
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* Anchor jumps land below the pinned bar. */
+    scroll-padding-top: 5rem;
   }
 
   html,
@@ -56,8 +116,11 @@
     background:
       radial-gradient(90% 55% at 50% -10%, rgba(224, 85, 40, 0.1), transparent 55%),
       linear-gradient(180deg, #f5ebe0 0%, #efe4d4 45%, #e8d9c4 100%);
-    font-family: 'Manrope', 'Segoe UI', sans-serif;
+    font-family: 'Manrope', ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
     letter-spacing: -0.01em;
+    /* No double-tap zoom on controls; pinch zoom stays available. */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: color-mix(in srgb, var(--accent) 16%, transparent);
   }
 
   [data-theme='dark'] body {
@@ -66,44 +129,19 @@
       linear-gradient(180deg, #191622 0%, #121018 48%, #0e0c14 100%);
   }
 
-  .studio-status-bar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 30;
-    border-top: 1px solid var(--line);
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
-    backdrop-filter: blur(14px);
-    padding-bottom: var(--safe-bottom);
-  }
-
-  :focus {
-    outline: none;
-  }
-
-  :focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
 }
 
 .font-display {
-  font-family: 'Sora', 'Manrope', sans-serif;
+  font-family: 'Sora', 'Manrope', ui-sans-serif, system-ui, sans-serif;
 }
 
 .font-mono {
-  font-family: 'IBM Plex Mono', ui-monospace, monospace;
-}
-
-.grain {
-  pointer-events: none;
-  position: fixed;
-  inset: 0;
-  opacity: 0.04;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  z-index: 0;
+  font-family: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 }
 
 .brand-mark {
@@ -115,34 +153,48 @@
 }
 
 @layer components {
+  /* ---------- Panels and their text ---------- */
+
   .panel {
     @apply rounded-2xl border;
     border-color: var(--line);
-    background: color-mix(in srgb, var(--surface) 92%, white);
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset;
+    background: var(--panel);
+    box-shadow: 0 1px 0 var(--panel-edge) inset;
   }
 
-  .panel-kicker {
-    @apply text-xs font-medium;
-    color: var(--muted);
-  }
-
+  /* The one heading of a panel: plain, sentence case. */
   .panel-title {
-    @apply mt-1 text-base font-semibold tracking-[-0.02em];
+    @apply text-base font-semibold tracking-[-0.02em];
+    line-height: 1.3;
     color: var(--ink-text);
   }
 
-  .chip-button {
-    @apply inline-flex min-h-10 items-center justify-center rounded-xl border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40;
-    border-color: var(--line);
-    background: color-mix(in srgb, var(--surface-2) 55%, white);
+  /*
+   * Retired. A small label stacked above every heading added nothing the
+   * heading did not already say. Kept hidden so leftover markup cannot bring
+   * the pattern back; delete the element where you find it.
+   */
+  .panel-kicker {
+    display: none;
+  }
+
+  /* Label of one control (slider, select, field) or of a group inside a panel. */
+  .field-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.35;
     color: var(--muted);
   }
 
-  .chip-button:hover {
-    border-color: color-mix(in srgb, var(--ink-text) 22%, transparent);
+  /* ---------- Buttons ---------- */
+
+  /* Secondary action. */
+  .chip-button {
+    @apply inline-flex items-center justify-center rounded-xl border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-45;
+    min-height: var(--tap);
+    border-color: var(--line);
+    background: var(--control);
     color: var(--ink-text);
-    background: var(--surface);
   }
 
   .btn-primary {
@@ -156,6 +208,7 @@
     font-size: 1rem;
     font-weight: 700;
     letter-spacing: -0.02em;
+    /* Brand orange: the same in both themes. */
     background: linear-gradient(180deg, #ff8a5c 0%, #e05528 100%);
     color: #1f120c;
     box-shadow: 0 10px 24px rgba(224, 85, 40, 0.28);
@@ -164,17 +217,13 @@
       transform 150ms var(--ease-out-expo);
   }
 
-  .btn-primary:hover:not(:disabled) {
-    filter: brightness(1.04);
-  }
-
   .btn-primary:active:not(:disabled) {
     transform: scale(0.98);
   }
 
   .btn-primary:disabled {
     cursor: not-allowed;
-    opacity: 0.4;
+    opacity: 0.45;
   }
 
   .btn-stop {
@@ -184,8 +233,8 @@
     align-items: center;
     justify-content: center;
     border-radius: 1rem;
-    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
-    background: color-mix(in srgb, var(--danger) 10%, white);
+    border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+    background: var(--wash-danger);
     padding: 0 1.25rem;
     font-size: 1rem;
     font-weight: 700;
@@ -194,10 +243,6 @@
     transition:
       background 150ms var(--ease-out-expo),
       transform 150ms var(--ease-out-expo);
-  }
-
-  .btn-stop:hover {
-    background: color-mix(in srgb, var(--danger) 16%, white);
   }
 
   .btn-stop:active {
@@ -210,8 +255,8 @@
     align-items: center;
     justify-content: center;
     border-radius: 0.75rem;
-    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-    background: color-mix(in srgb, var(--accent) 12%, white);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    background: var(--wash-accent);
     padding: 0 1rem;
     font-size: 0.875rem;
     font-weight: 600;
@@ -219,10 +264,6 @@
     transition:
       background 150ms var(--ease-out-expo),
       transform 150ms var(--ease-out-expo);
-  }
-
-  .btn-record:hover {
-    background: color-mix(in srgb, var(--accent) 18%, white);
   }
 
   .btn-record:active {
@@ -235,8 +276,8 @@
     align-items: center;
     justify-content: center;
     border-radius: 0.75rem;
-    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
-    background: color-mix(in srgb, var(--danger) 10%, white);
+    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+    background: var(--wash-danger);
     padding: 0 1rem;
     font-size: 0.875rem;
     font-weight: 600;
@@ -246,20 +287,18 @@
       transform 150ms var(--ease-out-expo);
   }
 
-  .btn-secondary-danger:hover {
-    background: color-mix(in srgb, var(--danger) 16%, white);
-  }
-
   .btn-secondary-danger:active {
     transform: scale(0.98);
   }
+
+  /* ---------- Voice cards ---------- */
 
   .voice-chip {
     position: relative;
     min-height: 3.5rem;
     border-radius: 1rem;
     border: 1px solid var(--line);
-    background: color-mix(in srgb, var(--surface) 70%, white);
+    background: var(--card);
     padding: 0.75rem 0.875rem;
     text-align: left;
     transition:
@@ -268,24 +307,22 @@
       transform 150ms var(--ease-out-expo);
   }
 
-  .voice-chip:hover {
-    border-color: color-mix(in srgb, var(--ink-text) 22%, transparent);
-  }
-
   .voice-chip:active {
     transform: scale(0.98);
   }
 
   .voice-chip-on {
-    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-    background: color-mix(in srgb, var(--accent) 12%, white);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    background: var(--wash-accent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
   }
 
   .voice-chip-on .voice-chip-name {
     color: var(--ink-text);
     font-weight: 700;
   }
+
+  /* ---------- Meters ---------- */
 
   .level-fill {
     height: 100%;
@@ -300,49 +337,19 @@
     background: color-mix(in srgb, var(--ink-text) 10%, transparent);
   }
 
-  .touch-slider {
-    @apply h-11 cursor-pointer;
-  }
-
-  .touch-slider::-webkit-slider-runnable-track {
-    height: 6px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--ink-text) 12%, transparent);
-  }
-
-  .touch-slider::-webkit-slider-thumb {
-    appearance: -webkit-appearance;
-    -webkit-appearance: none;
-    margin-top: -9px;
-    height: 24px;
-    width: 16px;
-    border-radius: 6px;
-    background: var(--accent);
-    border: 0;
-  }
-
-  .touch-slider::-moz-range-track {
-    height: 6px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--ink-text) 12%, transparent);
-  }
-
-  .touch-slider::-moz-range-thumb {
-    height: 24px;
-    width: 16px;
-    border-radius: 6px;
-    background: var(--accent);
-    border: 0;
-  }
+  /* ---------- Toggle chips (Desktop, Dark) ---------- */
 
   .mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-height: 2.75rem;
     min-width: 2.75rem;
     border-radius: 0.75rem;
     border: 1px solid var(--line);
-    background: color-mix(in srgb, var(--surface) 80%, white);
+    background: var(--card);
     padding: 0 0.75rem;
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     font-weight: 600;
     color: var(--muted);
     transition:
@@ -352,20 +359,57 @@
       transform 150ms var(--ease-out-expo);
   }
 
-  .mode-toggle:hover {
-    border-color: color-mix(in srgb, var(--ink-text) 22%, transparent);
-    color: var(--ink-text);
-  }
-
   .mode-toggle:active {
     transform: scale(0.98);
   }
 
   .mode-toggle-on {
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-    background: color-mix(in srgb, var(--accent) 12%, white);
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+    background: var(--wash-accent);
     color: var(--accent-soft);
   }
+
+  /* ---------- Segmented choice (tabs, detail level) ---------- */
+
+  .seg {
+    display: flex;
+    gap: 0.125rem;
+  }
+
+  .seg-boxed {
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    padding: 0.125rem;
+  }
+
+  .seg-item {
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--tap);
+    border-radius: 0.75rem;
+    padding: 0 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--muted);
+  }
+
+  .seg-boxed .seg-item {
+    min-height: var(--tap-compact);
+    border-radius: 0.625rem;
+    padding: 0 0.625rem;
+    font-size: 0.8125rem;
+  }
+
+  .seg-item[aria-current='page'],
+  .seg-item[aria-pressed='true'] {
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent-soft);
+  }
+
+  /* ---------- Status pills ---------- */
 
   .status-pill {
     display: inline-flex;
@@ -375,40 +419,386 @@
     padding: 0.375rem 0.75rem;
     font-size: 0.875rem;
     font-weight: 600;
+    white-space: nowrap;
   }
 
   .status-pill-off {
-    background: color-mix(in srgb, var(--ink-text) 6%, transparent);
+    background: color-mix(in srgb, var(--ink-text) 7%, transparent);
     color: var(--muted);
   }
 
   .status-pill-live {
-    background: color-mix(in srgb, var(--accent) 14%, white);
+    background: var(--wash-accent-strong);
     color: var(--accent-soft);
+  }
+
+  /* ---------- Switch (EffectsRack) ---------- */
+
+  /* Off: an outlined track with a grey knob. On: filled with the accent. */
+  .switch {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    width: 2.75rem;
+    height: 1.625rem;
+    border-radius: 999px;
+    border: 1.5px solid color-mix(in srgb, var(--ink-text) 58%, transparent);
+    background: transparent;
+    transition:
+      background 150ms var(--ease-out-expo),
+      border-color 150ms var(--ease-out-expo);
+  }
+
+  /* The visible switch is small; the tappable area is not. */
+  .switch::before {
+    content: '';
+    position: absolute;
+    inset: -0.6875rem -0.25rem;
+  }
+
+  .switch::after {
+    content: '';
+    position: absolute;
+    left: 0.1875rem;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 999px;
+    background: var(--muted);
+    transition:
+      transform 150ms var(--ease-out-expo),
+      background 150ms var(--ease-out-expo);
+  }
+
+  .switch[aria-checked='true'] {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+
+  .switch[aria-checked='true']::after {
+    background: var(--panel);
+    transform: translateX(1.125rem);
   }
 }
 
-/* Phone: hard lock — no sideways pan, single column (overrides lg/xl) */
-html[data-layout='phone'],
-html[data-layout='phone'] body {
-  overflow-x: hidden !important;
+/* Hover belongs to devices that can hover; on touch it would stick after a tap. */
+@media (hover: hover) {
+  .chip-button:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--ink-text) 24%, transparent);
+    background: var(--control-hover);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(1.04);
+  }
+
+  .btn-stop:hover {
+    background: var(--wash-danger-strong);
+  }
+
+  .btn-record:hover {
+    background: var(--wash-accent-strong);
+  }
+
+  .btn-secondary-danger:hover {
+    background: var(--wash-danger-strong);
+  }
+
+  .voice-chip:hover {
+    border-color: color-mix(in srgb, var(--ink-text) 24%, transparent);
+  }
+
+  .voice-chip-on:hover {
+    border-color: color-mix(in srgb, var(--accent) 75%, transparent);
+  }
+
+  .mode-toggle:hover {
+    border-color: color-mix(in srgb, var(--ink-text) 24%, transparent);
+    color: var(--ink-text);
+  }
+
+  .mode-toggle-on:hover {
+    border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+    color: var(--accent-soft);
+  }
+
+  .seg-item:hover:not([aria-current='page']):not([aria-pressed='true']) {
+    background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+    color: var(--ink-text);
+  }
+}
+
+/* ---------- App shell ---------- */
+
+.skip-link {
+  position: fixed;
+  top: calc(var(--safe-top) + 0.5rem);
+  left: calc(var(--safe-left) + 0.5rem);
+  z-index: 60;
+  transform: translateY(-200%);
+  border-radius: 0.75rem;
+  background: var(--ink-text);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--surface);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+/* Wide screens: one bar that stays in view. */
+.shell-bar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.shell-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding-top: max(0.75rem, var(--safe-top));
+  padding-bottom: 0.75rem;
+  padding-left: max(1rem, var(--safe-left));
+  padding-right: max(1rem, var(--safe-right));
+}
+
+.shell-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.shell-tabs {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.shell-tools,
+.shell-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.shell-quick {
+  flex-shrink: 0;
+}
+
+.shell-view {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.shell-view-label {
+  display: none;
+}
+
+/* The gear button comes from App.jsx; give it the same hit area as its neighbours. */
+.shell-quick > button {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+.shell-pin {
+  display: none;
+}
+
+/*
+ * Phone: the brand and the view options scroll away with the page, and only
+ * the tab row stays pinned — one 60px strip instead of a third of the screen.
+ */
+html[data-layout='phone'] .shell-bar {
+  position: static;
+  border-bottom: 0;
+}
+
+html[data-layout='phone'] .shell-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'brand quick'
+    'tools tools';
+  padding-bottom: 0.5rem;
+}
+
+html[data-layout='phone'] .shell-brand {
+  grid-area: brand;
+}
+
+html[data-layout='phone'] .shell-quick {
+  grid-area: quick;
+}
+
+html[data-layout='phone'] .shell-tools {
+  grid-area: tools;
+  justify-content: space-between;
+}
+
+/* The view switch leads its row, with its name spelled out. */
+html[data-layout='phone'] .shell-tools > .shell-view {
+  order: -1;
+}
+
+html[data-layout='phone'] .shell-view-label {
+  display: block;
+}
+
+html[data-layout='phone'] .shell-tabs,
+html[data-layout='phone'] .shell-tools > .shell-live {
+  display: none;
+}
+
+html[data-layout='phone'] .shell-pin {
+  position: sticky;
+  top: var(--safe-top);
+  z-index: var(--z-header);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  padding-top: 0.25rem;
+  padding-bottom: 0.5rem;
+  padding-left: max(1rem, var(--safe-left));
+  padding-right: max(1rem, var(--safe-right));
+}
+
+html[data-layout='phone'] .shell-pin > nav {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+html[data-layout='phone'] .shell-pin .seg-item {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 0.5rem;
+}
+
+/* Pinned under a notch or a translucent status bar: fill the strip above the row. */
+html[data-layout='phone'] .shell-pin[data-stuck='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: var(--safe-top);
+  background: inherit;
+}
+
+.shell-main {
+  padding-left: max(1rem, var(--safe-left));
+  padding-right: max(1rem, var(--safe-right));
+}
+
+/* Target of the skip link: focus moves here without drawing a ring round the page. */
+#main-content:focus {
+  outline: none;
+}
+
+.shell-footer {
+  padding-bottom: max(0.75rem, var(--safe-bottom));
+  padding-left: max(1rem, var(--safe-left));
+  padding-right: max(1rem, var(--safe-right));
+}
+
+@media (min-width: 640px) {
+  .shell-header,
+  .shell-main,
+  .shell-footer,
+  html[data-layout='phone'] .shell-pin {
+    padding-left: max(1.5rem, var(--safe-left));
+    padding-right: max(1.5rem, var(--safe-right));
+  }
+}
+
+@media (min-width: 1024px) {
+  .shell-header,
+  .shell-main,
+  .shell-footer,
+  html[data-layout='phone'] .shell-pin {
+    padding-left: max(2rem, var(--safe-left));
+    padding-right: max(2rem, var(--safe-right));
+  }
+}
+
+/* ---------- Studio status readout ---------- */
+
+/*
+ * In the page flow by default: on a phone the readout wraps to three lines,
+ * and pinned to the screen it would sit on top of the controls.
+ */
+.studio-status-bar {
+  margin-top: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--panel);
+}
+
+/* A long microphone or model name must not push the readout apart. */
+.studio-status-bar strong {
+  display: inline-block;
+  max-width: min(16rem, 60vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/*
+ * StudioPage reserves 6rem under itself for a bar fixed to the screen. The
+ * readout is part of the page flow now, so that reserve would only be a gap.
+ */
+.studio-page {
+  padding-bottom: 0.5rem !important;
+}
+
+/*
+ * Wide screens: it stays in view at the bottom edge while you scroll the
+ * Studio page, and comes to rest above the footer at the end. Sticky rather
+ * than fixed, so it never covers the footer however many lines it needs.
+ */
+@media (min-width: 1024px) {
+  html:not([data-layout='phone']) .studio-status-bar {
+    position: sticky;
+    bottom: max(0.5rem, var(--safe-bottom));
+    z-index: var(--z-status-bar);
+    background: var(--surface);
+    /* Lifts it off the panels that scroll underneath. */
+    box-shadow: 0 8px 24px rgba(31, 18, 12, 0.12);
+  }
+
+  /* A control reached with Tab scrolls clear of the docked readout instead of hiding under it. */
+  html:not([data-layout='phone']) {
+    scroll-padding-bottom: 5.5rem;
+  }
+}
+
+/* ---------- Layout modes ---------- */
+
+/* Phone: no sideways pan, one column. `clip` (not `hidden`) keeps the pinned row working. */
+html[data-layout='phone'] {
+  overflow-x: hidden;
   max-width: 100%;
 }
 
+html[data-layout='phone'] body,
 html[data-layout='phone'] .badlovoice {
-  min-width: 0 !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  overflow-x: hidden !important;
-}
-
-html[data-layout='phone'] .shell-header,
-html[data-layout='phone'] .shell-main,
-html[data-layout='phone'] .shell-footer,
-html[data-layout='phone'] .studio-status-bar,
-html[data-layout='phone'] .studio-page {
-  max-width: 100% !important;
-  overflow-x: hidden !important;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 html[data-layout='phone'] .studio-page > .grid {
@@ -431,14 +821,17 @@ html[data-layout='phone'] .studio-page > .grid > .order-3 {
   order: 3 !important;
 }
 
+/* The library is the last block on a phone: show the whole list instead of a scroller inside the page. */
 html[data-layout='phone'] .studio-page > .grid > aside.panel {
-  max-height: 70vh;
+  max-height: none;
 }
 
-/* Desktop opt-in: wide canvas + horizontal pan */
-html[data-layout='desktop'],
-html[data-layout='desktop'] body {
-  overflow-x: auto !important;
+/*
+ * Desktop opt-in: wide canvas + horizontal pan. The window does the panning;
+ * giving <body> its own overflow would stop the top bar from staying in view.
+ */
+html[data-layout='desktop'] {
+  overflow-x: auto;
 }
 
 html[data-layout='desktop'] .badlovoice {
@@ -467,40 +860,7 @@ html[data-layout='desktop'] .studio-page > .grid > aside.panel {
   max-height: calc(100svh - 11rem);
 }
 
-.shell-header {
-  padding-top: max(0.875rem, var(--safe-top));
-  padding-left: max(1rem, var(--safe-left));
-  padding-right: max(1rem, var(--safe-right));
-}
-
-.shell-main {
-  padding-left: max(1rem, var(--safe-left));
-  padding-right: max(1rem, var(--safe-right));
-}
-
-.shell-footer {
-  padding-bottom: max(0.75rem, var(--safe-bottom));
-  padding-left: max(1rem, var(--safe-left));
-  padding-right: max(1rem, var(--safe-right));
-}
-
-@media (min-width: 640px) {
-  .shell-header,
-  .shell-main,
-  .shell-footer {
-    padding-left: max(1.5rem, var(--safe-left));
-    padding-right: max(1.5rem, var(--safe-right));
-  }
-}
-
-@media (min-width: 1024px) {
-  .shell-header,
-  .shell-main,
-  .shell-footer {
-    padding-left: max(2rem, var(--safe-left));
-    padding-right: max(2rem, var(--safe-right));
-  }
-}
+/* ---------- Form controls ---------- */
 
 ::-webkit-scrollbar {
   width: 10px;
@@ -534,78 +894,157 @@ input[type='range'] {
   transition-timing-function: var(--ease-out-expo);
 }
 
+/* Placeholders are read like any other text, so they get a readable colour. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+/* Native selects: the control and its option list follow the theme. */
 .native-select-safe {
-  color-scheme: light;
+  min-height: var(--tap);
+  background-color: var(--surface);
+  color: var(--ink-text);
 }
 
 .native-select-safe option {
-  color: #2a231c;
-  background-color: #faf3e8;
+  background-color: var(--surface);
+  color: var(--ink-text);
 }
 
 .native-select-safe option:checked {
-  color: #1f120c;
-  background-color: #e9dcc8;
+  background-color: var(--surface-2);
+  color: var(--ink-text);
 }
 
+/* Sliders: a thin track with a fader cap. The box is taller than the track so it is easy to grab. */
 input[type='range'] {
   @apply appearance-none bg-transparent cursor-pointer;
+  height: 1.75rem;
+  --range-track: 4px;
+  --range-cap-w: 12px;
+  --range-cap-h: 20px;
 }
 
 input[type='range']::-webkit-slider-runnable-track {
-  height: 4px;
+  height: var(--range-track);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ink-text) 12%, transparent);
+  background: color-mix(in srgb, var(--ink-text) 16%, transparent);
 }
 
 input[type='range']::-webkit-slider-thumb {
-  appearance: -webkit-appearance;
   -webkit-appearance: none;
-  margin-top: -6px;
-  height: 16px;
-  width: 10px;
+  appearance: none;
+  margin-top: calc((var(--range-track) - var(--range-cap-h)) / 2);
+  height: var(--range-cap-h);
+  width: var(--range-cap-w);
   border-radius: 4px;
   background: var(--accent);
   border: 0;
 }
 
 input[type='range']::-moz-range-track {
-  height: 4px;
+  height: var(--range-track);
   border-radius: 999px;
   border: 0;
-  background: color-mix(in srgb, var(--ink-text) 12%, transparent);
+  background: color-mix(in srgb, var(--ink-text) 16%, transparent);
 }
 
 input[type='range']::-moz-range-thumb {
-  height: 16px;
-  width: 10px;
+  height: var(--range-cap-h);
+  width: var(--range-cap-w);
   border-radius: 4px;
   background: var(--accent);
   border: 0;
 }
 
+input[type='range']:disabled {
+  cursor: not-allowed;
+}
+
 input[type='range']:disabled::-webkit-slider-thumb {
-  background: #a89a88;
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
 }
 
-input[type='range'].fx-slider::-webkit-slider-runnable-track {
-  height: 3px;
+input[type='range']:disabled::-moz-range-thumb {
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
 }
 
-input[type='range'].fx-slider::-webkit-slider-thumb {
-  margin-top: -5px;
-  height: 13px;
-  width: 8px;
+/* Compact sliders of the effects rack. */
+input[type='range'].fx-slider {
+  --range-track: 3px;
+  --range-cap-w: 10px;
+  --range-cap-h: 16px;
 }
 
-input[type='range'].fx-slider::-moz-range-track {
-  height: 3px;
+/* ---------- Touch ---------- */
+
+@media (pointer: coarse) {
+  /* A finger needs a 44px target and a bigger cap to grab. */
+  input[type='range'],
+  input[type='range'].fx-slider {
+    height: 2.75rem;
+    --range-track: 6px;
+    --range-cap-w: 20px;
+    --range-cap-h: 30px;
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    border-radius: 6px;
+  }
+
+  input[type='range']::-moz-range-thumb {
+    border-radius: 6px;
+  }
+
+  /* Shared controls keep their 44px floor even when a utility asks for less. */
+  .chip-button,
+  .mode-toggle,
+  .seg-item,
+  .native-select-safe {
+    min-height: 2.75rem !important;
+  }
+
+  /* Opt-in floor for small one-off controls. */
+  .tap-target {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+
+  /* Fields: a 44px target, and 16px text so iOS does not zoom the page on focus. */
+  input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']),
+  select,
+  textarea {
+    min-height: 2.75rem;
+    font-size: max(1rem, 1em) !important;
+  }
 }
 
-input[type='range'].fx-slider::-moz-range-thumb {
-  height: 13px;
-  width: 8px;
+/* ---------- Focus ---------- */
+
+:focus:not(:focus-visible) {
+  outline: none;
 }
+
+/* After the utilities on purpose, so `outline-none` cannot remove the keyboard ring. */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Inside a scroller the ring would be cut off at the edges: draw it inwards. */
+.overflow-x-auto > :focus-visible,
+.overflow-y-auto > :focus-visible,
+.voice-chip:focus-visible {
+  outline-offset: -2px;
+}
+
+.switch:focus-visible {
+  outline-offset: 3px;
+}
+
+/* ---------- Motion ---------- */
 
 @keyframes pulse-border {
   0%,
@@ -636,20 +1075,19 @@ input[type='range'].fx-slider::-moz-range-thumb {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rec-blink,
-  .drag-active,
-  .animate-fade-in-up {
-    animation: none !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 
-  .btn-primary,
-  .btn-stop,
-  .btn-record,
-  .btn-secondary-danger,
-  .voice-chip,
-  .mode-toggle,
-  .level-fill {
-    transition: none !important;
+  /* A spinner is the only sign that something is loading: slow it, do not freeze it. */
+  .animate-spin {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
   }
 
   .btn-primary:active:not(:disabled),

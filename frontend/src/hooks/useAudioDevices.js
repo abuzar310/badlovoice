@@ -1,5 +1,53 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
+// Chrome lists the system default (and on Windows the "communications" device)
+// a second time under these ids. The pickers have their own "Default" entry.
+const ALIAS_IDS = new Set(['default', 'communications']);
+
+// The voice is played through an AudioContext, and only some browsers can
+// point one at a chosen speaker. Elsewhere a speaker picker would do nothing.
+const canPickOutput = () =>
+  typeof window.AudioContext?.prototype?.setSinkId === 'function';
+
+const NO_MEDIA = window.isSecureContext
+  ? "This browser can't use a microphone."
+  : 'The microphone only works on https or on localhost. Open BadloVoice from one of those.';
+
+function micProblem(err) {
+  if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
+    return "The microphone is blocked. Allow it in the browser's site settings, then try again.";
+  }
+  if (err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError') {
+    return 'No microphone found. Plug one in, then try again.';
+  }
+  if (err?.name === 'NotReadableError' || err?.name === 'AbortError') {
+    return 'The microphone is in use by another app. Close that app, then try again.';
+  }
+  return "Couldn't open the microphone.";
+}
+
+// Plain objects with a label that is always usable: browsers hide the real
+// names until the microphone has been allowed once.
+function pick(devices, kind, fallback) {
+  return devices
+    .filter((device) => device.kind === kind && device.deviceId && !ALIAS_IDS.has(device.deviceId))
+    .map((device, i) => ({
+      deviceId: device.deviceId,
+      groupId: device.groupId,
+      kind: device.kind,
+      label: device.label || `${fallback} ${i + 1}`,
+      named: Boolean(device.label),
+    }));
+}
+
+/**
+ * The microphones and speakers the user can choose from.
+ *
+ * `refresh()` re-reads the list and, if the browser is still hiding device
+ * names, asks for the microphone once to unlock them. It never throws; a
+ * problem ends up in `error` as a sentence that can be shown as it is.
+ * `outputDevices` is empty where the browser cannot switch speakers.
+ */
 export default function useAudioDevices() {
   const [inputDevices, setInputDevices] = useState([]);
   const [outputDevices, setOutputDevices] = useState([]);
@@ -8,97 +56,91 @@ export default function useAudioDevices() {
   const [permissionState, setPermissionState] = useState('prompt');
   const [error, setError] = useState(null);
 
+  const mountedRef = useRef(true);
+  const latestRef = useRef(0);
+
+  /** Reads the device list. Resolves to whether real names were available. */
   const enumerate = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
-      setError('This browser does not support media device enumeration.');
-      setInputDevices([]);
-      setOutputDevices([]);
-      setHasLabels(false);
-      return;
+      setError(NO_MEDIA);
+      return false;
     }
-
+    const turn = ++latestRef.current;
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const inputs = devices.filter((d) => d.kind === 'audioinput' && d.deviceId);
-      const outputs = devices.filter((d) => d.kind === 'audiooutput' && d.deviceId);
-      setInputDevices(inputs);
-      setOutputDevices(outputs);
-      setHasLabels([...inputs, ...outputs].some((d) => d.label));
-      setError(null);
-    } catch (err) {
-      setError(err.message || 'Failed to enumerate audio devices.');
-      console.error('Failed to enumerate audio devices:', err);
+      const inputs = pick(devices, 'audioinput', 'Microphone');
+      const named = inputs.some((device) => device.named);
+      // A newer read (a device was just plugged in, say) wins over this one.
+      if (mountedRef.current && turn === latestRef.current) {
+        setInputDevices(inputs);
+        setOutputDevices(canPickOutput() ? pick(devices, 'audiooutput', 'Speaker') : []);
+        setHasLabels(named);
+      }
+      return named;
+    } catch {
+      setError("Couldn't read the list of microphones.");
+      return false;
     }
   }, []);
 
-  // Full refresh: request mic permission to get labeled device names,
-  // then enumerate. Only call this on user action (e.g. clicking Start).
   const refresh = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError('This browser does not support microphone access.');
+      setError(NO_MEDIA);
       return;
     }
-
     setIsRefreshing(true);
+    setError(null);
     try {
-      let stream = null;
+      // Opening the mic only to learn its name is slow and makes headsets
+      // click, so do it just once: when the names are still hidden.
+      if (await enumerate()) return;
+      let stream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        setPermissionState('granted');
       } catch (err) {
-        if (err?.name === 'NotAllowedError') {
-          setPermissionState('denied');
-          setError('Microphone permission is required to reveal device names.');
-        } else {
-          setError(err.message || 'Failed to access the microphone.');
-        }
+        if (err?.name === 'NotAllowedError') setPermissionState('denied');
+        setError(micProblem(err));
+        return;
       }
-
+      setPermissionState('granted');
       await enumerate();
-
-      stream?.getTracks().forEach((t) => t.stop());
-    } catch (err) {
-      setError(err.message || 'Failed to refresh audio devices.');
-      console.error('Failed to refresh audio devices:', err);
+      stream.getTracks().forEach((track) => track.stop());
     } finally {
-      setIsRefreshing(false);
+      if (mountedRef.current) setIsRefreshing(false);
     }
   }, [enumerate]);
 
-  // On mount: enumerate without requesting permission (labels may be empty,
-  // but at least we know devices exist). Permission is requested later when
-  // the user clicks Start.
+  // On mount, read the list without asking for anything; names may be hidden.
+  // Then keep it current as devices come and go and as permission changes.
   useEffect(() => {
+    mountedRef.current = true;
     enumerate();
 
-    let permissionStatus = null;
-    const handleDeviceChange = () => enumerate();
-    navigator.mediaDevices?.addEventListener?.('devicechange', handleDeviceChange);
+    const media = navigator.mediaDevices;
+    media?.addEventListener?.('devicechange', enumerate);
 
-    if (navigator.permissions?.query) {
-      navigator.permissions
-        .query({ name: 'microphone' })
-        .then((status) => {
-          permissionStatus = status;
-          setPermissionState(status.state);
-
-          if (status.state === 'granted') {
-            enumerate();
-          }
-
-          status.onchange = () => {
-            setPermissionState(status.state);
-            enumerate();
-          };
-        })
-        .catch(() => {});
-    }
+    let watching = true;
+    let permission = null;
+    const onPermission = () => {
+      setPermissionState(permission.state);
+      enumerate();
+    };
+    // Not every browser knows 'microphone' here; the list works without it.
+    navigator.permissions
+      ?.query({ name: 'microphone' })
+      .then((status) => {
+        if (!watching) return;
+        permission = status;
+        setPermissionState(status.state);
+        status.addEventListener('change', onPermission);
+      })
+      .catch(() => {});
 
     return () => {
-      navigator.mediaDevices?.removeEventListener?.('devicechange', handleDeviceChange);
-      if (permissionStatus) {
-        permissionStatus.onchange = null;
-      }
+      watching = false;
+      mountedRef.current = false;
+      media?.removeEventListener?.('devicechange', enumerate);
+      permission?.removeEventListener('change', onPermission);
     };
   }, [enumerate]);
 

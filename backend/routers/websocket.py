@@ -1,12 +1,19 @@
 import asyncio
 import json
 import logging
+import math
 import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend.services.audio_processor import audio_to_bytes, bytes_to_audio
-from backend.services.dsp_effects import EffectsChain
+from backend.services.audio_processor import (
+    MAX_SAMPLE_RATE,
+    MIN_SAMPLE_RATE,
+    audio_to_bytes,
+    bytes_to_audio,
+)
+from backend.services.dsp_effects import MAX_SHIFT_SEMITONES, EffectsChain
+from backend.services.model_manager import NoActiveModelError
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +21,39 @@ router = APIRouter()
 
 # How often to send latency status messages (seconds)
 STATUS_INTERVAL = 1.0
+# A model that fails does so on every chunk; log it this often, not per chunk.
+MODEL_ERROR_LOG_INTERVAL = 5.0
+
+MIN_CHUNK_SIZE = 128
+MAX_CHUNK_SIZE = 65536
+CONFIG_HINT = (
+    f"Config needs sample_rate {MIN_SAMPLE_RATE}-{MAX_SAMPLE_RATE} "
+    f"and chunk_size {MIN_CHUNK_SIZE}-{MAX_CHUNK_SIZE}"
+)
+
+# Everything int() / float() / .get() can raise on a hostile JSON value.
+_BAD_VALUE = (TypeError, ValueError, AttributeError, OverflowError)
+
+
+def _finite(value) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"not a finite number: {value!r}")
+    return number
+
+
+def _stream_format(data, conn_state: dict) -> tuple[int, int]:
+    """Read (sample_rate, chunk_size) from a message, defaulting to the current ones.
+
+    Raises one of ``_BAD_VALUE`` when a value is malformed or out of range.
+    """
+    sample_rate = int(data.get("sample_rate", conn_state["sample_rate"]))
+    chunk_size = int(data.get("chunk_size", conn_state["chunk_size"]))
+    if not MIN_SAMPLE_RATE <= sample_rate <= MAX_SAMPLE_RATE:
+        raise ValueError(f"sample_rate out of range: {sample_rate}")
+    if not MIN_CHUNK_SIZE <= chunk_size <= MAX_CHUNK_SIZE:
+        raise ValueError(f"chunk_size out of range: {chunk_size}")
+    return sample_rate, chunk_size
 
 
 @router.websocket("/ws/audio")
@@ -123,28 +163,20 @@ def _get_chain(conn_state: dict) -> EffectsChain:
 async def _receive_config(websocket: WebSocket, conn_state: dict) -> dict | None:
     """Wait for and parse the initial JSON configuration message."""
     try:
-        raw = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
+        message = await asyncio.wait_for(websocket.receive(), timeout=10.0)
     except asyncio.TimeoutError:
         logger.warning("WebSocket config timeout — closing")
         await websocket.close(code=1008, reason="Config timeout")
         return None
-    except Exception:
+    if message["type"] == "websocket.disconnect":
         return None
 
     try:
-        config = json.loads(raw)
-    except json.JSONDecodeError:
-        await websocket.close(code=1003, reason="Invalid JSON config")
-        return None
-
-    sample_rate = int(config.get("sample_rate", conn_state["sample_rate"]))
-    chunk_size = int(config.get("chunk_size", conn_state["chunk_size"]))
-
-    if not (8000 <= sample_rate <= 192000):
-        await websocket.close(code=1003, reason="sample_rate must be 8000–192000")
-        return None
-    if not (128 <= chunk_size <= 65536):
-        await websocket.close(code=1003, reason="chunk_size must be 128–65536")
+        # A binary frame has no text, which fails here like any other non-JSON.
+        config = json.loads(message.get("text") or "")
+        sample_rate, chunk_size = _stream_format(config, conn_state)
+    except _BAD_VALUE:
+        await websocket.close(code=1003, reason=CONFIG_HINT)
         return None
 
     conn_state["sample_rate"] = sample_rate
@@ -160,26 +192,28 @@ async def _receive_config(websocket: WebSocket, conn_state: dict) -> dict | None
 def _apply_settings(data: dict, conn_state: dict) -> None:
     """Merge a settings payload (config or live update) into connection state."""
     try:
-        if "pitch_shift" in data:
-            conn_state["pitch_shift"] = float(data["pitch_shift"])
-        if "formant_shift" in data:
-            conn_state["formant_shift"] = float(data["formant_shift"])
+        # Floats go through _finite: json.loads accepts NaN / Infinity, and
+        # these values are handed on to the model as they are.
+        for key in ("pitch_shift", "formant_shift"):
+            if key in data:
+                shift = _finite(data[key])
+                conn_state[key] = max(-MAX_SHIFT_SEMITONES, min(MAX_SHIFT_SEMITONES, shift))
         if "f0_method" in data:
             conn_state["f0_method"] = str(data["f0_method"])
         if "index_rate" in data and data["index_rate"] is not None:
-            conn_state["index_rate"] = float(data["index_rate"])
+            conn_state["index_rate"] = _finite(data["index_rate"])
         if "filter_radius" in data and data["filter_radius"] is not None:
             conn_state["filter_radius"] = int(data["filter_radius"])
         if "rms_mix_rate" in data and data["rms_mix_rate"] is not None:
-            conn_state["rms_mix_rate"] = float(data["rms_mix_rate"])
+            conn_state["rms_mix_rate"] = _finite(data["rms_mix_rate"])
         if "protect" in data and data["protect"] is not None:
-            conn_state["protect"] = float(data["protect"])
+            conn_state["protect"] = _finite(data["protect"])
         if "effects" in data and isinstance(data["effects"], dict):
             conn_state["effects"] = data["effects"]
         if "vad_enabled" in data:
             conn_state["vad_enabled"] = bool(data["vad_enabled"])
         if "vad_threshold_db" in data:
-            conn_state["vad_threshold_db"] = float(data["vad_threshold_db"])
+            conn_state["vad_threshold_db"] = _finite(data["vad_threshold_db"])
         if "latency_mode" in data:
             conn_state["latency_mode"] = str(data["latency_mode"])
         if "crossfade_ms" in data:
@@ -195,7 +229,7 @@ def _apply_settings(data: dict, conn_state: dict) -> None:
             gate["threshold"] = conn_state["vad_threshold_db"]
             effects["gate"] = gate
             conn_state["effects"] = effects
-    except (TypeError, ValueError) as exc:
+    except _BAD_VALUE as exc:
         logger.warning("Ignoring invalid settings values: %s", exc)
 
 
@@ -228,12 +262,15 @@ def _process_frame_sync(audio, model_manager, conn_state: dict) -> tuple:
         model_ms = (time.perf_counter() - t_model) * 1000.0
         active = model_manager.get_active_model()
         mode = (active or {}).get("type", "model")
-    except RuntimeError:
+    except NoActiveModelError:
         # No active model — DSP passthrough handles pitch instead.
         processed = chain.apply_pitch(processed, pitch_shift)
     except Exception:
         # RVC/ONNX failure must not drop the stream to silence.
-        logger.exception("Model inference failed — falling back to DSP pitch")
+        now = time.monotonic()
+        if now - conn_state.get("model_error_logged", -math.inf) >= MODEL_ERROR_LOG_INTERVAL:
+            conn_state["model_error_logged"] = now
+            logger.exception("Model inference failed — falling back to DSP pitch")
         processed = chain.apply_pitch(processed, pitch_shift)
         mode = "dsp"
         model_ms = (time.perf_counter() - t_model) * 1000.0
@@ -286,13 +323,12 @@ def _handle_json_message(text: str, conn_state: dict) -> None:
 
     _apply_settings(data, conn_state)
 
+    # The device rate can change mid-stream (the client learns it on Start),
+    # but only within the same limits as the initial config.
     try:
-        if "sample_rate" in data:
-            conn_state["sample_rate"] = int(data["sample_rate"])
-        if "chunk_size" in data:
-            conn_state["chunk_size"] = int(data["chunk_size"])
-    except (TypeError, ValueError):
-        pass
+        conn_state["sample_rate"], conn_state["chunk_size"] = _stream_format(data, conn_state)
+    except _BAD_VALUE as exc:
+        logger.warning("Ignoring invalid stream format update: %s", exc)
 
 
 async def _send_status(websocket: WebSocket, model_manager, conn_state: dict) -> None:

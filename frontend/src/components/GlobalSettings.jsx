@@ -1,49 +1,42 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { fetchConfig } from '../lib/api';
+import useServerStatus from '../hooks/useServerStatus';
+import { FIELD } from '../lib/ui';
 
 const SAMPLE_RATE_OPTIONS = [32000, 40000, 44100, 48000];
 const CHUNK_SIZE_OPTIONS = [1024, 2048, 4096, 8192];
 
 function uniqueSorted(values) {
-  return [...new Set(values.filter((value) => Number.isFinite(value) && value > 0))].sort((a, b) => a - b);
-}
-
-function RuntimeBadge({ label, ready }) {
-  return (
-    <div className={`rounded-md border px-4 py-3 ${
-      ready
-        ? 'border-emerald-300/30 bg-emerald-400/[0.07] text-emerald-200'
-        : 'border-[color:var(--line)] bg-[color:var(--surface-2)]/60 text-[color:var(--muted)]'
-    }`}
-    >
-      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--muted)]">
-        {label}
-      </p>
-      <p className="mt-2 text-sm font-medium">
-        {ready ? 'Ready' : 'Unavailable'}
-      </p>
-    </div>
+  return [...new Set(values.filter((value) => Number.isFinite(value) && value > 0))].sort(
+    (a, b) => a - b
   );
 }
 
-function RuntimeItem({ label, value, detail }) {
-  return (
-    <div className="rounded-md border border-[color:var(--line)] bg-[color:var(--surface-2)]/60 px-4 py-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--muted)]">
-        {label}
-      </p>
-      <p className="mt-2 text-sm font-medium text-[color:var(--ink-text)]">
-        {value}
-      </p>
-      {detail ? (
-        <p className="mt-2 text-xs leading-5 text-[color:var(--muted)]">
-          {detail}
-        </p>
-      ) : null}
-    </div>
-  );
+function describeRvc(torch) {
+  if (!torch?.available) return "Not available. PyTorch isn't installed on the server.";
+  if (torch.device === 'cpu') return 'Ready, on the CPU. Expect a second or more of delay.';
+  return `Ready, on ${torch.gpuName || 'the graphics card'}.`;
 }
 
+function describeOnnx(onnx) {
+  if (!onnx?.available) return "Not available. ONNX Runtime isn't installed on the server.";
+  if (onnx.gpuEnabled) return 'Ready, on the graphics card.';
+  const provider = (onnx.activeProvider || 'CPU').replace(/ExecutionProvider$/, '');
+  return provider === 'CPU' ? 'Ready, on the CPU.' : `Ready, using ${provider}.`;
+}
+
+/**
+ * The settings dialog. Everything in it belongs to the desktop server: how
+ * audio is sent there, and what that server can run. The built-in engine picks
+ * its own sample rate, so without a server there is nothing to set.
+ */
 export default function GlobalSettings({ config, onChange, disabled, onClose }) {
+  const server = useServerStatus();
+  const id = useId();
+  const dialogRef = useRef(null);
+  // What the server can run, asked fresh: undefined while loading, null if that failed.
+  const [runtime, setRuntime] = useState();
+
   const sampleRateOptions = useMemo(
     () => uniqueSorted([config.sampleRate, ...SAMPLE_RATE_OPTIONS]),
     [config.sampleRate]
@@ -52,65 +45,109 @@ export default function GlobalSettings({ config, onChange, disabled, onClose }) 
     () => uniqueSorted([config.chunkSize, ...CHUNK_SIZE_OPTIONS]),
     [config.chunkSize]
   );
-  const onnxSelectedProviders = config.runtime?.onnx?.selectedProviders || [];
-  const onnxProviders = config.runtime?.onnx?.availableProviders || [];
-  const onnxProvider = config.runtime?.onnx?.activeProvider || (config.runtime?.onnx?.available ? 'CPUExecutionProvider' : 'Unavailable');
-  const torchDevice = config.runtime?.torch?.device || 'unavailable';
-  const gpuName = config.runtime?.torch?.gpuName || (torchDevice === 'cpu' ? 'CPU only' : 'Not detected');
-  const cudaVersion = config.runtime?.torch?.cudaVersion || 'Not detected';
-  const onnxGpuReady = Boolean(config.runtime?.onnx?.gpuEnabled);
-  const torchGpuReady = Boolean(config.runtime?.torch?.cudaAvailable);
+  const chunkMs = Math.round((config.chunkSize / config.sampleRate) * 1000);
+
+  useEffect(() => {
+    if (!server.online) return undefined;
+    let current = true;
+    fetchConfig()
+      .then((answer) => current && setRuntime(answer?.runtime || null))
+      .catch(() => current && setRuntime(null));
+    return () => {
+      current = false;
+    };
+  }, [server.online]);
+
+  // Move focus into the dialog, and back to where it was on close.
+  useEffect(() => {
+    const opener = document.activeElement;
+    dialogRef.current?.focus();
+    return () => opener?.focus?.();
+  }, []);
 
   return (
-    <section className="rounded-lg border border-[color:var(--line)] bg-[color:var(--surface)] p-6 shadow-[0_32px_120px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:p-7">
-      <div className="flex flex-col gap-4 border-b border-[color:var(--line)] pb-5 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.34em] text-[color:var(--muted)]">
-            Global Settings
-          </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em] text-[color:var(--ink-text)]">
-            Session runtime
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm text-[color:var(--muted)]">
-            Keep stream defaults and hardware runtime details in one place.
-          </p>
-        </div>
-
+    <section
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={`${id}-title`}
+      tabIndex={-1}
+      className="panel mx-auto w-full max-w-2xl p-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)] sm:p-6"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <h2 id={`${id}-title`} className="panel-title text-lg">
+          Settings
+        </h2>
         {onClose ? (
           <button
+            type="button"
             onClick={onClose}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] text-[color:var(--muted)] transition hover:border-[color:var(--ink-text)]/25 hover:bg-[color:var(--surface)] hover:text-[color:var(--ink-text)]"
+            className="chip-button px-2.5"
             aria-label="Close settings"
           >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
             </svg>
           </button>
         ) : null}
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]">
-        <div className="rounded-md border border-[color:var(--line)] bg-[color:var(--surface-2)]/60 p-5">
-          <div className="flex flex-col gap-2 border-b border-[color:var(--line)] pb-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[color:var(--muted)]">
-              Stream Defaults
-            </p>
-            <p className="text-sm text-[color:var(--muted)]">
-              Applied to the next routing session. Stop routing before changing these values.
-            </p>
-          </div>
+      {server.state === 'checking' && (
+        <div
+          className="mt-4 h-16 animate-pulse rounded-xl bg-ink/7 motion-reduce:animate-none"
+          aria-hidden="true"
+        />
+      )}
 
-          <div className="mt-5 grid gap-5 sm:grid-cols-2">
+      {server.offline && (
+        <>
+          <p className="mt-3 max-w-[65ch] text-pretty text-sm text-muted">
+            These settings are for the BadloVoice desktop server, which runs AI voice models.{' '}
+            {server.state === 'unreachable'
+              ? "It can't be reached right now."
+              : "This page isn't connected to one."}{' '}
+            The built-in voices and effects set themselves up, so there is nothing to change here.
+          </p>
+          {server.state === 'unreachable' && (
+            <button
+              type="button"
+              className="chip-button mt-4"
+              disabled={server.rechecking}
+              onClick={server.recheck}
+            >
+              {server.rechecking ? 'Checking…' : 'Check again'}
+            </button>
+          )}
+        </>
+      )}
+
+      {server.online && (
+        <>
+          <h3 className="mt-5 text-sm font-semibold text-ink">Audio sent to the server</h3>
+          <p className="mt-1 text-xs text-muted">
+            {disabled
+              ? 'Stop the voice changer to change these.'
+              : 'Saved on this device and used from the next time you press Start.'}
+          </p>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-medium uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                Sample Rate
+              <label htmlFor={`${id}-rate`} className="field-label block">
+                Sample rate
               </label>
               <select
+                id={`${id}-rate`}
                 value={config.sampleRate}
                 onChange={(event) => onChange?.({ sampleRate: Number(event.target.value) })}
                 disabled={disabled}
-                className="native-select-safe mt-3 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--surface-2)]/60 px-4 py-3 text-sm text-[color:var(--ink-text)] outline-none transition focus:border-[color:var(--ink-text)]/30 focus:bg-[color:var(--surface)] disabled:cursor-not-allowed disabled:opacity-50"
+                className={`${FIELD} native-select-safe mt-1`}
               >
                 {sampleRateOptions.map((value) => (
                   <option key={value} value={value}>
@@ -118,17 +155,19 @@ export default function GlobalSettings({ config, onChange, disabled, onClose }) 
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-muted">Higher is clearer and takes more computing power.</p>
             </div>
 
             <div>
-              <label className="block text-xs font-medium uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                Chunk Size
+              <label htmlFor={`${id}-chunk`} className="field-label block">
+                Chunk size
               </label>
               <select
+                id={`${id}-chunk`}
                 value={config.chunkSize}
                 onChange={(event) => onChange?.({ chunkSize: Number(event.target.value) })}
                 disabled={disabled}
-                className="native-select-safe mt-3 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--surface-2)]/60 px-4 py-3 text-sm text-[color:var(--ink-text)] outline-none transition focus:border-[color:var(--ink-text)]/30 focus:bg-[color:var(--surface)] disabled:cursor-not-allowed disabled:opacity-50"
+                className={`${FIELD} native-select-safe mt-1`}
               >
                 {chunkSizeOptions.map((value) => (
                   <option key={value} value={value}>
@@ -136,63 +175,33 @@ export default function GlobalSettings({ config, onChange, disabled, onClose }) 
                   </option>
                 ))}
               </select>
-            </div>
-          </div>
-
-          <p className="mt-5 text-xs uppercase tracking-[0.18em] text-[color:var(--muted)]">
-            {disabled
-              ? 'Routing is active. Stop the stream to edit global defaults.'
-              : 'Saved locally and synced to the server before the next stream starts.'}
-          </p>
-        </div>
-
-        <div className="rounded-md border border-[color:var(--line)] bg-[color:var(--surface-2)]/60 p-5">
-          <div className="flex flex-col gap-4 border-b border-[color:var(--line)] pb-4">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[color:var(--muted)]">
-                Hardware Runtime
-              </p>
-              <p className="mt-2 text-sm text-[color:var(--muted)]">
-                What the backend currently sees for ONNX, PyTorch, GPU, and CUDA.
+              <p className="mt-1 text-xs text-muted">
+                About {chunkMs} ms of sound at a time. Smaller means less delay; too small can
+                crackle.
               </p>
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <RuntimeBadge label="ONNX Runtime" ready={config.runtime?.onnx?.available} />
-              <RuntimeBadge label="PyTorch / RVC" ready={config.runtime?.torch?.available} />
-            </div>
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <RuntimeItem
-              label="ONNX Provider"
-              value={onnxProvider}
-              detail={
-                onnxSelectedProviders.length > 0
-                  ? `Selected: ${onnxSelectedProviders.join(', ')}. Available: ${onnxProviders.join(', ')}`
-                  : onnxProviders.length > 0
-                    ? `Available: ${onnxProviders.join(', ')}`
-                    : 'No providers detected'
-              }
-            />
-            <RuntimeItem
-              label="PyTorch Device"
-              value={torchDevice}
-              detail={torchGpuReady ? 'CUDA acceleration is available to PyTorch.' : 'PyTorch is running without CUDA acceleration.'}
-            />
-            <RuntimeItem
-              label="GPU"
-              value={gpuName}
-              detail={onnxGpuReady ? 'ONNX Runtime can use CUDAExecutionProvider.' : 'ONNX Runtime is currently on CPU provider only.'}
-            />
-            <RuntimeItem
-              label="CUDA"
-              value={cudaVersion}
-              detail={config.runtime?.torch?.cudaAvailable ? 'Reported by torch.version.cuda.' : 'CUDA was not reported by the current PyTorch runtime.'}
-            />
-          </div>
-        </div>
-      </div>
+          {runtime !== null && (
+            <>
+              <h3 className="mt-6 text-sm font-semibold text-ink">What the server can run</h3>
+              {runtime === undefined ? (
+                <div
+                  className="mt-2 h-12 animate-pulse rounded-xl bg-ink/7 motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+              ) : (
+                <dl className="mt-2 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
+                  <dt className="font-medium text-ink">RVC models (.pth)</dt>
+                  <dd className="text-muted">{describeRvc(runtime.torch)}</dd>
+                  <dt className="font-medium text-ink">ONNX models (.onnx)</dt>
+                  <dd className="text-muted">{describeOnnx(runtime.onnx)}</dd>
+                </dl>
+              )}
+            </>
+          )}
+        </>
+      )}
     </section>
   );
 }

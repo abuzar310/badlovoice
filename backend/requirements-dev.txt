@@ -1,0 +1,15 @@
+# Light install: runs the server in DSP-only mode and the test suite.
+# No torch / onnxruntime / RVC runtime (see requirements.txt for the AI path).
+#
+#   pip install -r backend/requirements-dev.txt
+#   python -m pytest backend/tests
+fastapi>=0.115.0
+uvicorn>=0.32.0
+python-multipart>=0.0.18
+websockets>=14.0
+numpy>=1.26.0,<2.0
+scipy>=1.14.0
+pydantic-settings>=2.6.0
+soundfile>=0.12.1,<0.13.0
+httpx
+pytest

@@ -35,18 +35,22 @@ class SlotManager:
             slots = data.get("slots", [])
             for item in slots:
                 idx = int(item.get("index", -1))
+                name, label = item.get("name"), item.get("label")
                 if 0 <= idx < SLOT_COUNT:
                     self._slots[idx] = {
                         "index": idx,
-                        "name": item.get("name"),
-                        "label": item.get("label") or f"Slot {idx + 1}",
+                        "name": name if isinstance(name, str) and name else None,
+                        "label": label if isinstance(label, str) and label else f"Slot {idx + 1}",
                     }
         except Exception:
             logger.exception("Failed to load slots from %s", self._path)
 
     def _save(self) -> None:
-        payload = {"slots": self._slots}
-        self._path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        # Write beside the file and swap it in, so a crash mid-write cannot
+        # leave a truncated file behind.
+        tmp = self._path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"slots": self._slots}, indent=2), encoding="utf-8")
+        tmp.replace(self._path)
 
     def list_slots(self) -> list[dict]:
         with self._lock:

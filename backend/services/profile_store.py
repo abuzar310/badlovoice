@@ -60,21 +60,33 @@ class ProfileStore:
             return
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
-            self._profiles = list(data.get("profiles", []))
+            # Keep well-formed entries only: anything else breaks listing or
+            # can never be deleted (ids are matched as strings).
+            self._profiles = [
+                p
+                for p in data.get("profiles", [])
+                if isinstance(p, dict)
+                and isinstance(p.get("id"), str)
+                and isinstance(p.get("settings"), dict)
+            ]
         except Exception:
             logger.exception("Failed to load profiles")
 
     def _save(self) -> None:
-        self._path.write_text(
-            json.dumps({"profiles": self._profiles}, indent=2),
-            encoding="utf-8",
-        )
+        # Write beside the file and swap it in: a crash mid-write must not
+        # leave a truncated file where every profile used to be.
+        tmp = self._path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"profiles": self._profiles}, indent=2), encoding="utf-8")
+        tmp.replace(self._path)
 
     def list_profiles(self) -> list[dict]:
         with self._lock:
             return list(self._profiles)
 
     def save_profile(self, name: str, settings: dict) -> dict:
+        # Raises ValueError for NaN / Infinity, which are not valid JSON and
+        # would otherwise be written into the file.
+        json.dumps(settings, allow_nan=False)
         with self._lock:
             if len(self._profiles) >= MAX_PROFILES:
                 raise ValueError(f"Max {MAX_PROFILES} profiles")

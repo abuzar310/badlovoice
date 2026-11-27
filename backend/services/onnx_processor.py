@@ -2,7 +2,11 @@ import logging
 from pathlib import Path
 
 import numpy as np
-import onnxruntime as ort
+
+try:
+    import onnxruntime as ort
+except ImportError:  # optional: the DSP-only server runs without it
+    ort = None
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +15,11 @@ class OnnxProcessor:
     """ONNX Runtime model processor for voice conversion inference."""
 
     def __init__(self, model_path: str) -> None:
+        if ort is None:
+            raise RuntimeError(
+                "onnxruntime is not installed, so .onnx models cannot be loaded "
+                "(pip install -r backend/requirements.txt)"
+            )
         self._model_path = Path(model_path)
         if not self._model_path.exists():
             raise FileNotFoundError(f"ONNX model not found: {model_path}")
@@ -76,7 +85,7 @@ class OnnxProcessor:
         return results[0].flatten().astype(np.float32)
 
     @staticmethod
-    def _reshape_for_input(audio: np.ndarray, inp_detail: ort.NodeArg) -> np.ndarray:
+    def _reshape_for_input(audio: np.ndarray, inp_detail: "ort.NodeArg") -> np.ndarray:
         """Reshape audio array to match the model's expected input shape."""
         shape = inp_detail.shape
         if shape is None:
