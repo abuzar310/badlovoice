@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { recordingFile, saveMode, shareRecording } from '../lib/saveRecording';
 
 function formatDuration(seconds) {
   const total = Math.max(0, Math.floor(seconds));
@@ -19,6 +20,44 @@ function formatSize(bytes) {
 export default function Recorder({ pipeline, onEnsureStarted, compact = false }) {
   const { isRunning, isRecording, recordSeconds, lastRecording } = pipeline;
   const [hint, setHint] = useState(null);
+  const [take, setTake] = useState(null);
+  const [sharing, setSharing] = useState(false);
+  // A blob: download link does nothing inside the Android / iOS apps.
+  const mode = useMemo(saveMode, []);
+  const canDownload = mode === 'download' || mode === 'share';
+  const savedHint = mode === 'download' ? 'Saved — download below.' : 'Saved — share it below.';
+
+  useEffect(() => {
+    setTake(null);
+    if (!lastRecording) return undefined;
+    let stale = false;
+    recordingFile(lastRecording, `badlovoice-${Date.now()}.wav`)
+      .then((file) => {
+        if (!stale) setTake(file);
+      })
+      .catch(() => {
+        if (!stale && !canDownload) setHint('Could not read the take — record it again.');
+      });
+    return () => {
+      stale = true;
+    };
+  }, [lastRecording, canDownload]);
+
+  const handleShare = async () => {
+    setHint(null);
+    setSharing(true);
+    try {
+      await shareRecording(take, mode);
+    } catch (err) {
+      setHint(
+        canDownload
+          ? 'Could not open the share sheet — use Download instead.'
+          : `Could not share the take: ${err?.message || 'unknown error'}`
+      );
+    } finally {
+      setSharing(false);
+    }
+  };
 
   const handleRecord = async () => {
     setHint(null);
@@ -42,11 +81,11 @@ export default function Recorder({ pipeline, onEnsureStarted, compact = false })
     const result = pipeline.stopRecording();
     if (result && typeof result.then === 'function') {
       result.then((rec) => {
-        setHint(rec ? 'Saved — download below.' : 'Empty take — talk longer, then try again.');
+        setHint(rec ? savedHint : 'Empty take — talk longer, then try again.');
       });
       return;
     }
-    setHint(result ? 'Saved — download below.' : 'Empty take — talk longer, then try again.');
+    setHint(result ? savedHint : 'Empty take — talk longer, then try again.');
   };
 
   const downloadRow = lastRecording ? (
@@ -57,14 +96,26 @@ export default function Recorder({ pipeline, onEnsureStarted, compact = false })
         <p className="text-xs text-[color:var(--muted)]">
           Last take · {formatDuration(lastRecording.seconds)} · {formatSize(lastRecording.size)}
         </p>
-        <div className="flex items-center gap-2">
-          <a
-            href={lastRecording.url}
-            download={`badlovoice-${Date.now()}.wav`}
-            className="chip-button !normal-case min-h-10"
-          >
-            Download WAV
-          </a>
+        <div className="flex flex-wrap items-center gap-2">
+          {mode !== 'download' ? (
+            <button
+              type="button"
+              onClick={handleShare}
+              disabled={!take || sharing}
+              className="chip-button min-h-10 !text-[color:var(--ink-text)]"
+            >
+              Share
+            </button>
+          ) : null}
+          {canDownload ? (
+            <a
+              href={lastRecording.url}
+              download={take?.name || 'badlovoice.wav'}
+              className="chip-button !normal-case min-h-10"
+            >
+              Download WAV
+            </a>
+          ) : null}
           <button
             type="button"
             onClick={() => pipeline.discardRecording()}
@@ -75,7 +126,12 @@ export default function Recorder({ pipeline, onEnsureStarted, compact = false })
           </button>
         </div>
       </div>
-      <audio controls src={lastRecording.url} className="mt-3 h-9 w-full" />
+      <audio
+        controls
+        controlsList={canDownload ? undefined : 'nodownload'}
+        src={lastRecording.url}
+        className="mt-3 h-9 w-full"
+      />
     </div>
   ) : null;
 
@@ -140,7 +196,7 @@ export default function Recorder({ pipeline, onEnsureStarted, compact = false })
         <li>
           Press <strong className="text-[color:var(--ink-text)]">Start</strong> (or Start + Record)
         </li>
-        <li>Talk, then Stop — download WAV here</li>
+        <li>Talk, then Stop — {mode === 'download' ? 'download WAV' : 'share the take'} here</li>
       </ol>
 
       {hint ? (
