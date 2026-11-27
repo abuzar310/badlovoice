@@ -93,7 +93,7 @@ export default function Recorder({ pipeline, onEnsureStarted, compact = false })
       className={`${compact ? 'mt-3' : 'mt-4'} rounded-2xl border border-line bg-surface-2/50 p-3.5`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-[color:var(--muted)]">
+        <p className="text-xs text-muted">
           Last take · {formatDuration(lastRecording.seconds)} · {formatSize(lastRecording.size)}
         </p>
         <div className={`flex items-center gap-2 ${mode === 'share' ? 'flex-wrap' : ''}`}>
@@ -102,7 +102,7 @@ export default function Recorder({ pipeline, onEnsureStarted, compact = false })
               type="button"
               onClick={handleShare}
               disabled={!take || sharing}
-              className="chip-button min-h-10 !text-[color:var(--ink-text)]"
+              className="chip-button min-h-10 !text-ink"
             >
               Share
             </button>
@@ -139,11 +139,11 @@ export default function Recorder({ pipeline, onEnsureStarted, compact = false })
     return (
       <section className="panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm font-semibold text-[color:var(--ink-text)]">Record</p>
+          <p className="text-sm font-semibold text-ink">Record</p>
           {isRecording ? (
             <div className="flex items-center gap-3">
-              <span className="flex items-center gap-2 font-mono text-sm tabular-nums text-[color:var(--danger-soft)]">
-                <span className="rec-blink inline-block h-2.5 w-2.5 rounded-full bg-[color:var(--danger)]" />
+              <span className="flex items-center gap-2 font-mono text-sm tabular-nums text-danger-soft">
+                <span className="rec-blink inline-block h-2.5 w-2.5 rounded-full bg-danger" />
                 {formatDuration(recordSeconds)}
               </span>
               <button type="button" onClick={handleStop} className="btn-secondary-danger">
@@ -157,7 +157,7 @@ export default function Recorder({ pipeline, onEnsureStarted, compact = false })
           )}
         </div>
         {hint ? (
-          <p className="mt-2 text-xs text-[color:var(--accent-soft)]" role="status">
+          <p className="mt-2 text-xs text-accent-soft" role="status">
             {hint}
           </p>
         ) : null}
@@ -176,8 +176,8 @@ export default function Recorder({ pipeline, onEnsureStarted, compact = false })
 
         {isRecording ? (
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-2 font-mono text-sm tabular-nums text-[color:var(--danger-soft)]">
-              <span className="rec-blink inline-block h-2.5 w-2.5 rounded-full bg-[color:var(--danger)]" />
+            <span className="flex items-center gap-2 font-mono text-sm tabular-nums text-danger-soft">
+              <span className="rec-blink inline-block h-2.5 w-2.5 rounded-full bg-danger" />
               {formatDuration(recordSeconds)}
             </span>
             <button type="button" onClick={handleStop} className="btn-secondary-danger">
@@ -191,16 +191,16 @@ export default function Recorder({ pipeline, onEnsureStarted, compact = false })
         )}
       </div>
 
-      <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs text-[color:var(--muted)]">
+      <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs text-muted">
         <li>Wear headphones</li>
         <li>
-          Press <strong className="text-[color:var(--ink-text)]">Start</strong> (or Start + Record)
+          Press <strong className="text-ink">Start</strong> (or Start + Record)
         </li>
         <li>Talk, then Stop — {mode === 'download' ? 'download WAV' : 'share the take'} here</li>
       </ol>
 
       {hint ? (
-        <p className="mt-2 text-xs text-[color:var(--accent-soft)]" role="status">
+        <p className="mt-2 text-xs text-accent-soft" role="status">
           {hint}
         </p>
       ) : null}
