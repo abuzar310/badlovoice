@@ -39,5 +39,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    <uses-feature android:name="android.hardware.microphone" android:required="true" />
+    <!-- Not required: tablets, Chromebooks and TV boxes often rely on a headset or USB mic. -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 </manifest>

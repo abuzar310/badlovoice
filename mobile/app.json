@@ -7,44 +7,29 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "badlovoice",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#efe4d4"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.badlovoice.app",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "BadloVoice needs the microphone to change your voice live.",
-        "NSCameraUsageDescription": "Camera is unused; required only if the web view requests it."
+        "NSMicrophoneUsageDescription": "BadloVoice needs the microphone to change your voice live."
       }
     },
     "android": {
       "package": "com.badlovoice.expo",
       "adaptiveIcon": {
         "backgroundColor": "#FF8A3D",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/icon.png"
       },
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.INTERNET"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ]
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "plugins": [
-      [
-        "expo-av",
-        {
-          "microphonePermission": "Allow BadloVoice to use your microphone for live voice change."
-        }
-      ]
-    ]
+    }
   }
 }

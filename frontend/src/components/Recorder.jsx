@@ -96,7 +96,7 @@ export default function Recorder({ pipeline, onEnsureStarted, compact = false })
         <p className="text-xs text-[color:var(--muted)]">
           Last take · {formatDuration(lastRecording.seconds)} · {formatSize(lastRecording.size)}
         </p>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className={`flex items-center gap-2 ${mode === 'share' ? 'flex-wrap' : ''}`}>
           {mode !== 'download' ? (
             <button
               type="button"

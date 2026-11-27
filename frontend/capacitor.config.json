@@ -5,10 +5,10 @@
   "server": {
     "androidScheme": "https"
   },
-  "android": {
-    "allowMixedContent": true
-  },
   "plugins": {
+    "App": {
+      "disableBackButtonHandler": true
+    },
     "SplashScreen": {
       "launchAutoHide": true,
       "backgroundColor": "#efe4d4"

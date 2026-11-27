@@ -48,8 +48,23 @@ def resolve_path(raw: str) -> Path:
     return path
 
 
+def save_token(token_path: Path, creds) -> None:
+    """Store the OAuth token readable by its owner only: it holds a refresh token."""
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(creds.to_json())
+    os.chmod(token_path, 0o600)  # also tightens a file written by an older run
+
+
+def drive_literal(value: str) -> str:
+    """Quote a value for a Drive search query (backslash first, then the quote)."""
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
 def get_credentials():
     """Prefer OAuth user token; fall back to service account."""
+    from google.auth.exceptions import RefreshError
     from google.auth.transport.requests import Request
     from google.oauth2 import service_account
     from google.oauth2.credentials import Credentials
@@ -67,9 +82,13 @@ def get_credentials():
         if token_path.is_file():
             creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            token_path.parent.mkdir(parents=True, exist_ok=True)
-            token_path.write_text(creds.to_json(), encoding="utf-8")
+            try:
+                creds.refresh(Request())
+                save_token(token_path, creds)
+            except RefreshError:
+                # Revoked, or older than 7 days while the OAuth app is in "Testing".
+                print("Saved Drive sign-in is no longer valid; signing in again.")
+                creds = None
         if not creds or not creds.valid:
             if not oauth_client.is_file():
                 print(f"Missing OAuth client JSON: {oauth_client}")
@@ -80,8 +99,7 @@ def get_credentials():
                 raise SystemExit(1)
             flow = InstalledAppFlow.from_client_secrets_file(str(oauth_client), SCOPES)
             creds = flow.run_local_server(port=0)
-            token_path.parent.mkdir(parents=True, exist_ok=True)
-            token_path.write_text(creds.to_json(), encoding="utf-8")
+            save_token(token_path, creds)
             print(f"Saved OAuth token -> {token_path}")
         return creds, "oauth"
 
@@ -125,6 +143,7 @@ def main() -> int:
         return 1
 
     try:
+        import google_auth_oauthlib.flow  # noqa: F401  (used by get_credentials)
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload
     except ImportError:
@@ -146,8 +165,8 @@ def main() -> int:
         drive.files()
         .list(
             q=(
-                f"name='{name.replace(chr(39), chr(92) + chr(39))}' "
-                f"and '{folder_id}' in parents and trashed=false"
+                f"name={drive_literal(name)} "
+                f"and {drive_literal(folder_id)} in parents and trashed=false"
             ),
             spaces="drive",
             fields="files(id, name)",
