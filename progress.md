@@ -26,3 +26,11 @@
 | Browser, fake mic, no backend | Female 203 Hz, Deeper 87 Hz, Chipmunk 318 Hz, Whisper unpitched; recording works with speakers muted |
 | Converter, 6 s file | 0.2 s, pitch on target |
 | Chosen output device | voice routed, monitor toggles, no page errors |
+
+### Later in pass 2
+
+- Output routing to a chosen device; mic clean-up options; wake lock while live
+- Audits merged: backend (433 tests), server panels (offline-capable), mobile (share sheet in apps)
+- App shell audit and engine review were stopped by the owner before reporting
+- Browser checks and the colour migration script moved into `dev/checks/`
+- Hand-over and open items: `task_plan.md`, section "Hand-over"

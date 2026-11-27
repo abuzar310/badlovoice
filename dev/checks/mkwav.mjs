@@ -1,0 +1,11 @@
+import { vowel } from '../../frontend/tests/helpers.mjs';
+import fs from 'node:fs';
+const sr = 48000;
+const x = vowel(sr, 6, (t) => 125 + 10 * Math.sin(t * 3));
+const buf = Buffer.alloc(44 + x.length * 2);
+buf.write('RIFF', 0); buf.writeUInt32LE(36 + x.length * 2, 4); buf.write('WAVEfmt ', 8);
+buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
+buf.writeUInt32LE(sr, 24); buf.writeUInt32LE(sr * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34);
+buf.write('data', 36); buf.writeUInt32LE(x.length * 2, 40);
+for (let i = 0; i < x.length; i++) buf.writeInt16LE(Math.round(x[i] * 32767), 44 + i * 2);
+fs.writeFileSync(process.argv[2], buf);
