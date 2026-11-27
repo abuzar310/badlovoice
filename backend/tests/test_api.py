@@ -498,6 +498,90 @@ def test_server_stays_responsive_while_a_model_loads(client, fake_onnx):
     assert client.get("/api/models/active").json()["name"] == "slow.onnx"
 
 
+def _saved_preset(client) -> str:
+    return client.post("/api/presets/", json={"name": "Old", "settings": {}}).json()["id"]
+
+
+def _saved_profile(client) -> str:
+    return client.post("/api/profiles/", json={"name": "Old", "settings": {}}).json()["id"]
+
+
+@pytest.mark.parametrize(
+    "request_for",
+    [
+        lambda c: ("POST", "/api/presets/", {"json": {"name": "New", "settings": {}}}),
+        lambda c: ("DELETE", f"/api/presets/{_saved_preset(c)}", {}),
+        lambda c: ("POST", "/api/profiles/", {"json": {"name": "New", "settings": {}}}),
+        lambda c: ("DELETE", f"/api/profiles/{_saved_profile(c)}", {}),
+        lambda c: ("PUT", "/api/slots/0", {"json": {"name": None, "label": "New"}}),
+    ],
+    ids=["save-preset", "delete-preset", "save-profile", "delete-profile", "bind-slot"],
+)
+def test_server_stays_responsive_while_settings_are_written_to_a_slow_disk(
+    client, monkeypatch, request_for
+):
+    method, path, kwargs = request_for(client)
+    writing = threading.Event()
+    real_replace = Path.replace
+
+    def slow_replace(self, target):  # a busy or sleeping disk
+        writing.set()
+        time.sleep(0.8)
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", slow_replace)
+    outcome = {}
+    worker = threading.Thread(
+        target=lambda: outcome.update(status=client.request(method, path, **kwargs).status_code)
+    )
+    worker.start()
+    assert writing.wait(timeout=5)
+
+    started = time.perf_counter()
+    assert client.get("/health").status_code == 200
+    waited = time.perf_counter() - started
+    worker.join()
+
+    assert outcome["status"] == 200
+    assert waited < 0.4, "the audio event loop was stuck behind a settings file write"
+
+
+@pytest.mark.parametrize(
+    "save, list_path",
+    [
+        (("POST", "/api/presets/", {"json": {"name": "New", "settings": {}}}), "/api/presets/"),
+        (("POST", "/api/profiles/", {"json": {"name": "New", "settings": {}}}), "/api/profiles/"),
+        (("PUT", "/api/slots/0", {"json": {"name": None, "label": "New"}}), "/api/slots/"),
+    ],
+    ids=["presets", "profiles", "slots"],
+)
+def test_listing_during_a_slow_save_does_not_stall_the_server(client, monkeypatch, save, list_path):
+    method, path, kwargs = save
+    writing = threading.Event()
+    real_replace = Path.replace
+
+    def slow_replace(self, target):
+        writing.set()
+        time.sleep(0.8)
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", slow_replace)
+    saver = threading.Thread(target=client.request, args=(method, path), kwargs=kwargs)
+    saver.start()
+    assert writing.wait(timeout=5)
+    lister = threading.Thread(target=client.get, args=(list_path,))  # waits for the save
+    lister.start()
+    time.sleep(0.1)  # let the list request reach the store
+
+    started = time.perf_counter()
+    assert client.get("/health").status_code == 200
+    waited = time.perf_counter() - started
+    saver.join()
+    lister.join()
+
+    assert waited < 0.4, "the audio event loop was stuck behind a settings file write"
+
+
 # --- offline file convert -----------------------------------------------------
 
 

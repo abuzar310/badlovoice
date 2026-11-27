@@ -20,13 +20,18 @@ class BindBody(BaseModel):
     label: str | None = Field(default=None, max_length=48)
 
 
+# Plain `def` throughout: FastAPI runs these on a worker thread. Binding writes
+# a file, listing waits for a bind in progress, and activating loads a model
+# for seconds; none of that may stall the event loop that is streaming audio.
+
+
 @router.get("/")
-async def list_slots(request: Request) -> list[dict]:
+def list_slots(request: Request) -> list[dict]:
     return _get_slots(request).list_slots()
 
 
 @router.put("/{index}")
-async def bind_slot(request: Request, index: int, body: BindBody) -> dict:
+def bind_slot(request: Request, index: int, body: BindBody) -> dict:
     try:
         return _get_slots(request).bind(index, body.name, body.label)
     except FileNotFoundError as exc:
@@ -37,8 +42,6 @@ async def bind_slot(request: Request, index: int, body: BindBody) -> dict:
 
 @router.post("/{index}/activate")
 def activate_slot(request: Request, index: int) -> dict:
-    # Plain `def`: loading a model takes seconds and must run on a worker
-    # thread, not on the event loop that is streaming audio.
     try:
         return _get_slots(request).activate(index)
     except ValueError as exc:  # slot index out of range

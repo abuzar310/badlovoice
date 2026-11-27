@@ -29,6 +29,7 @@ class PassthroughPipeline:
     def __init__(self, seconds_per_call: float = 0.0) -> None:
         self.seconds_per_call = seconds_per_call
         self.inputs: list[np.ndarray] = []
+        self.index_paths: list = []
         self.running = threading.Event()
 
     def pipeline(
@@ -37,6 +38,7 @@ class PassthroughPipeline:
         version, protect, f0_file=None,
     ):  # fmt: skip
         self.inputs.append(np.array(audio))
+        self.index_paths.append(file_index)
         self.running.set()
         time.sleep(self.seconds_per_call)
         out_sr = resample_sr if resample_sr >= 16000 and resample_sr != tgt_sr else tgt_sr
@@ -160,6 +162,18 @@ def test_release_stream_does_not_wait_for_a_running_inference(make_processor):
     inference.join()
 
     assert waited < 0.2
+
+
+def test_model_without_an_index_file_passes_an_empty_index_path(make_processor):
+    # rvc's pipeline takes "no index" as an empty string: the upstream WebUI
+    # code tests `file_index != "" and os.path.exists(file_index)`, and
+    # os.path.exists(None) raises TypeError.
+    pipeline = PassthroughPipeline()
+    processor = make_processor(pipeline)
+
+    processor.process(tone(seconds=0.1), sample_rate=SR, stream_id="x")
+
+    assert pipeline.index_paths == [""]
 
 
 def test_unloaded_processor_refuses_to_process(make_processor):

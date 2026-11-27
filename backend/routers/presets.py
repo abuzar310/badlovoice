@@ -21,15 +21,20 @@ def _get_store(request: Request):
     return store
 
 
+# Plain `def` throughout: FastAPI runs these on a worker thread. Saving and
+# deleting write a file, and listing waits for a save in progress; neither may
+# stall the event loop that is streaming audio.
+
+
 @router.get("/")
-async def list_presets(request: Request) -> dict:
+def list_presets(request: Request) -> dict:
     """List built-in and user presets."""
     store = _get_store(request)
     return {"builtin": store.list_builtin(), "user": store.list_user()}
 
 
 @router.post("/")
-async def save_preset(request: Request, payload: PresetPayload) -> dict:
+def save_preset(request: Request, payload: PresetPayload) -> dict:
     """Save (or overwrite) a user preset."""
     store = _get_store(request)
     try:
@@ -42,7 +47,7 @@ async def save_preset(request: Request, payload: PresetPayload) -> dict:
 
 
 @router.delete("/{preset_id}")
-async def delete_preset(request: Request, preset_id: str) -> dict:
+def delete_preset(request: Request, preset_id: str) -> dict:
     """Delete a user preset by id."""
     store = _get_store(request)
     try:

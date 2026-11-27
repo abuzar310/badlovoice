@@ -23,13 +23,18 @@ async def latency_modes() -> list[dict]:
     return list(LATENCY_MODES.values())
 
 
+# Plain `def` below: FastAPI runs these on a worker thread. Saving and deleting
+# write a file, and listing waits for a save in progress; neither may stall
+# the event loop that is streaming audio.
+
+
 @router.get("/")
-async def list_profiles(request: Request) -> list[dict]:
+def list_profiles(request: Request) -> list[dict]:
     return _store(request).list_profiles()
 
 
 @router.post("/")
-async def save_profile(request: Request, body: SaveBody) -> dict:
+def save_profile(request: Request, body: SaveBody) -> dict:
     try:
         return _store(request).save_profile(body.name, body.settings)
     except ValueError as exc:
@@ -37,7 +42,7 @@ async def save_profile(request: Request, body: SaveBody) -> dict:
 
 
 @router.delete("/{profile_id}")
-async def delete_profile(request: Request, profile_id: str) -> dict:
+def delete_profile(request: Request, profile_id: str) -> dict:
     try:
         _store(request).delete_profile(profile_id)
     except FileNotFoundError:

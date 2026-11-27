@@ -375,6 +375,31 @@ def test_model_failure_falls_back_to_dsp_and_is_logged_once(client, caplog):
     assert "CUDA out of memory" in caplog.text
 
 
+def test_client_leaving_mid_inference_is_a_quiet_disconnect(client, caplog):
+    inferring = threading.Event()
+
+    def slow(audio):
+        inferring.set()
+        time.sleep(0.4)
+        return audio
+
+    model = FakeModelManager(slow)
+    client.app.state.model_manager = model
+
+    with caplog.at_level(logging.WARNING, logger="backend"):
+        with stream(client) as ws:
+            ws.send_bytes(frame(0, voice(CHUNK)))
+            assert inferring.wait(timeout=5)
+        # ... the socket is closed here while the model is still working.
+        deadline = time.monotonic() + 5
+        while not model.released and time.monotonic() < deadline:
+            time.sleep(0.005)
+
+    assert len(model.released) == 1  # the stream's model state was still freed
+    problems = [r for r in caplog.records if r.name.startswith("backend") and r.levelno >= logging.WARNING]
+    assert not problems, [r.getMessage() for r in problems]
+
+
 def test_model_returning_nan_does_not_poison_the_effect_rack(client):
     calls = {"n": 0}
 

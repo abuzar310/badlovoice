@@ -206,11 +206,13 @@ export default function App() {
     },
   };
 
-  // With an RVC/ONNX model on a reachable server, the model owns the voice.
+  // With an RVC/ONNX model on a reachable server, the model produces the voice.
   // Otherwise everything (pitch, formant, effects) runs in the browser engine.
   const modelActive = Boolean(activeModel) && wsStatus === 'connected';
   settingsPayloadRef.current = {
-    pitch_shift: modelActive ? 0 : voice.pitch,
+    // With a model, pitch is the model's transpose (e.g. +12 for a male voice
+    // into a female model). Formant stays with the model's own timbre.
+    pitch_shift: voice.pitch,
     formant_shift: modelActive ? 0 : voice.formant,
     f0_method: voice.f0Method,
     index_rate: voice.indexRate,

@@ -76,7 +76,7 @@ Open **http://127.0.0.1:5173**, press **Start voice**, allow the microphone and 
 
 ### Add AI voice models (optional)
 
-You need Python 3.11 or newer. An NVIDIA GPU with CUDA makes RVC and ONNX models faster.
+You need Python 3.10 or 3.11 (the AI packages pin versions that have no builds for newer Python). An NVIDIA GPU with CUDA makes RVC and ONNX models faster.
 
 ```powershell
 python -m venv .venv
@@ -191,7 +191,17 @@ cd frontend
 npm test
 ```
 
-It checks pitch accuracy across voices and sample rates, that formants stay put when only pitch moves, that the original pitch does not leak through on speech-like input, every effect for stability, and that the whole rack runs well above realtime.
+Backend tests (Python, no GPU or AI packages needed):
+
+```bash
+pip install -r backend/requirements-dev.txt
+```
+
+```bash
+npm run test:backend
+```
+
+The engine suite checks pitch accuracy across voices and sample rates, that formants stay put when only pitch moves, that the original pitch does not leak through on speech-like input, every effect for stability, and that the whole rack runs well above realtime.
 
 ---
 
@@ -201,7 +211,8 @@ Environment prefix: `SHIFTBOOTH_` (legacy name; still used in code).
 
 | Variable | Default | Notes |
 |----------|---------|--------|
-| `SHIFTBOOTH_HOST` | `0.0.0.0` | Bind address |
+| `SHIFTBOOTH_HOST` | `127.0.0.1` | Bind address for `python -m backend.main`. Use `0.0.0.0` only on a network you trust: the API has no login. |
+| `SHIFTBOOTH_CORS_ORIGINS` | `[]` | Extra web origins allowed to call the API (JSON list). Other sites get 403. |
 | `SHIFTBOOTH_PORT` | `8000` | HTTP + WS port |
 | `SHIFTBOOTH_MODELS_DIR` | `models` | Checkpoint directory |
 | `SHIFTBOOTH_SAMPLE_RATE` | `40000` | Stream default |

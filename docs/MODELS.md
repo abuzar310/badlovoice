@@ -58,10 +58,12 @@ These are creator-shared voices, not celebrity clones. They are not included in 
 
 1. Start the backend and open the app.
 2. Open the **Models** tab.
-3. Drop in the `.pth` or `.onnx` file, plus the `.index` if you have one.
+3. Drop in the `.pth` or `.onnx` file, plus the `.index` if you have one. The index must have the same name as the model (`voice.pth` and `voice.index`); rename downloaded files like `added_IVF256_Flat_nprobe_1_voice_v2.index`, or the index is ignored.
 4. Press **Activate**.
 5. Go back to **Studio** and press **Start voice**. Use headphones.
 
 You can also copy files into `models/` and refresh the list.
 
-While a model is active the server produces the voice and the pitch and formant sliders are left to the model. Deactivate it to return to the built-in engine.
+While a model is active the server produces the voice. The formant slider is left to the model. Deactivate it to return to the built-in engine.
+
+The pitch slider sets the model's transpose: about +12 to take a male voice into a female model, −12 the other way.

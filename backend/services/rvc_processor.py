@@ -358,7 +358,9 @@ class RvcProcessor:
                     times,
                     pitch_shift,
                     method,
-                    str(self._index_path) if self._index_path else None,
+                    # "" (not None) means no index: the pipeline calls
+                    # os.path.exists() on anything that is not "".
+                    str(self._index_path) if self._index_path else "",
                     resolved_index_rate if self._index_path else 0.0,
                     self._if_f0,
                     resolved_filter_radius,
