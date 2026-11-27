@@ -658,6 +658,19 @@ html[data-layout='phone'] .shell-view-label {
   display: block;
 }
 
+/* Most phones are narrower than 390px: without the word, the switch and the Desktop button share a row. */
+@media (max-width: 389.98px) {
+  html[data-layout='phone'] .shell-view-label {
+    display: none;
+  }
+}
+
+@media (max-width: 339.98px) {
+  html[data-layout='phone'] .seg-boxed .seg-item {
+    padding: 0 0.375rem;
+  }
+}
+
 html[data-layout='phone'] .shell-tabs,
 html[data-layout='phone'] .shell-tools > .shell-live {
   display: none;
