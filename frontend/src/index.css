@@ -8,7 +8,9 @@
  * The same variables back the Tailwind colour names (tailwind.config.js).
  *
  * Text tokens (--ink-text, --muted, --accent-soft, --danger-soft, --success)
- * are tuned to reach 4.5:1 on every surface and wash in their theme.
+ * reach 4.5:1 on the page, on every resting surface and on the regular
+ * washes of their theme. --accent and --danger are fills and borders: for
+ * text in those colours use the -soft token.
  */
 @layer base {
   :root,
@@ -26,7 +28,7 @@
     --focus-ring: #c4471f;
     --danger: #b92b44;
     --danger-soft: #8f2236; /* danger as text */
-    --success: #1f7046;
+    --success: #1c6b42;
     --mic: #3a6f96;
 
     /* Raised surfaces: light surfaces get lighter as they come forward. */
@@ -369,7 +371,7 @@
     color: var(--accent-soft);
   }
 
-  /* ---------- Segmented choice (tabs, detail level) ---------- */
+  /* ---------- Segmented choice (tabs, view switch) ---------- */
 
   .seg {
     display: flex;
@@ -432,7 +434,7 @@
     color: var(--accent-soft);
   }
 
-  /* ---------- Switch (EffectsRack) ---------- */
+  /* ---------- Switch ---------- */
 
   /* Off: an outlined track with a grey knob. On: filled with the accent. */
   .switch {
@@ -530,12 +532,13 @@
 
 /* ---------- App shell ---------- */
 
+/* Off the top edge until it gets keyboard focus. */
 .skip-link {
   position: fixed;
-  top: calc(var(--safe-top) + 0.5rem);
+  top: 0;
   left: calc(var(--safe-left) + 0.5rem);
   z-index: 60;
-  transform: translateY(-200%);
+  transform: translateY(-120%);
   border-radius: 0.75rem;
   background: var(--ink-text);
   padding: 0.75rem 1rem;
@@ -545,7 +548,7 @@
 }
 
 .skip-link:focus {
-  transform: none;
+  transform: translateY(calc(var(--safe-top) + 0.5rem));
 }
 
 /* Wide screens: one bar that stays in view. */
@@ -1046,6 +1049,11 @@ input[type='range'].fx-slider {
     min-height: 2.75rem !important;
   }
 
+  /* An icon-only chip is as wide as it is tall. */
+  .chip-button {
+    min-width: 2.75rem;
+  }
+
   /* Opt-in floor for small one-off controls. */
   .tap-target {
     min-height: 2.75rem;
@@ -1143,5 +1151,72 @@ dialog:focus-visible {
   .voice-chip:active,
   .mode-toggle:active {
     transform: none;
+  }
+}
+
+/* ---------- Forced colours (Windows high contrast) ---------- */
+
+/* The system palette replaces ours, so state has to be drawn with borders and system colours. */
+@media (forced-colors: active) {
+  .btn-primary,
+  .btn-stop {
+    border: 2px solid ButtonText;
+  }
+
+  .seg-item[aria-current='page'],
+  .seg-item[aria-pressed='true'],
+  .mode-toggle-on,
+  .voice-chip-on,
+  button[aria-pressed='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  input[type='range'] {
+    forced-color-adjust: none;
+  }
+
+  input[type='range']::-webkit-slider-runnable-track {
+    background: GrayText;
+  }
+
+  input[type='range']::-moz-range-track {
+    background: GrayText;
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    background: Highlight;
+  }
+
+  input[type='range']::-moz-range-thumb {
+    background: Highlight;
+  }
+
+  .switch {
+    forced-color-adjust: none;
+    border-color: ButtonText;
+    background: Canvas;
+  }
+
+  .switch::after {
+    background: ButtonText;
+  }
+
+  .switch[aria-checked='true'] {
+    border-color: Highlight;
+    background: Highlight;
+  }
+
+  .switch[aria-checked='true']::after {
+    background: HighlightText;
+  }
+
+  .level-track {
+    border: 1px solid ButtonText;
+  }
+
+  .level-fill {
+    forced-color-adjust: none;
+    background-color: Highlight;
   }
 }
