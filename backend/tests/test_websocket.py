@@ -5,6 +5,7 @@ import logging
 import queue
 import struct
 import threading
+import time
 from contextlib import contextmanager
 
 import numpy as np
@@ -335,6 +336,10 @@ def test_model_output_is_streamed_back_with_stream_settings(client):
     assert sent["sample_rate"] == 44100  # the device rate, not the 40 kHz default
     assert sent["f0_method"] == "rmvpe"
     assert sent["index_rate"] == 0.4
+    # The server notices the disconnect on its own schedule: wait for it.
+    deadline = time.monotonic() + 5
+    while not model.released and time.monotonic() < deadline:
+        time.sleep(0.005)
     assert model.released == [sent["stream_id"]]  # per-stream state freed on disconnect
 
 

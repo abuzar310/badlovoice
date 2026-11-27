@@ -292,6 +292,10 @@ async def _handle_binary_frame(
 
     try:
         audio, seq_num, _reserved = bytes_to_audio(data)
+        if len(audio) > MAX_CHUNK_SIZE:
+            # One giant frame would hold the model for seconds and stall
+            # every other stream queued behind it.
+            raise ValueError(f"{len(audio)} samples exceeds the {MAX_CHUNK_SIZE} maximum")
     except ValueError as exc:
         logger.warning("Invalid audio frame: %s", exc)
         return

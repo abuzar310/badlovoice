@@ -660,6 +660,19 @@ html[data-layout='phone'] .shell-tools > .shell-live {
   display: none;
 }
 
+/* Tablets and phones held sideways have the width for one row above the tabs. */
+@media (min-width: 768px) {
+  html[data-layout='phone'] .shell-header {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: 'brand tools quick';
+    column-gap: 0.75rem;
+  }
+
+  html[data-layout='phone'] .shell-tools {
+    justify-content: flex-end;
+  }
+}
+
 html[data-layout='phone'] .shell-pin {
   position: sticky;
   top: var(--safe-top);
@@ -683,6 +696,7 @@ html[data-layout='phone'] .shell-pin > nav {
 html[data-layout='phone'] .shell-pin .seg-item {
   flex: 1 1 0;
   min-width: 0;
+  max-width: 11rem;
   padding: 0 0.5rem;
 }
 
@@ -824,6 +838,32 @@ html[data-layout='phone'] .studio-page > .grid > .order-3 {
 /* The library is the last block on a phone: show the whole list instead of a scroller inside the page. */
 html[data-layout='phone'] .studio-page > .grid > aside.panel {
   max-height: none;
+}
+
+/*
+ * Tablets and phones held sideways: still no sideways pan, but two columns —
+ * the stage with Start on the left, the sliders and the library on the right.
+ */
+@media (min-width: 768px) {
+  html[data-layout='phone'] .studio-page > .grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) !important;
+    align-items: start;
+  }
+
+  html[data-layout='phone'] .studio-page > .grid > .order-1 {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  html[data-layout='phone'] .studio-page > .grid > .order-2 {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  html[data-layout='phone'] .studio-page > .grid > .order-3 {
+    grid-column: 2;
+    grid-row: 2;
+  }
 }
 
 /*
@@ -1042,6 +1082,12 @@ input[type='range'].fx-slider {
 
 .switch:focus-visible {
   outline-offset: 3px;
+}
+
+/* A dialog takes focus when it opens so that it is announced; it is not a control and needs no ring. */
+[role='dialog']:focus-visible,
+dialog:focus-visible {
+  outline: none;
 }
 
 /* ---------- Motion ---------- */

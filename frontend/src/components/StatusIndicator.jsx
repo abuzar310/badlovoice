@@ -20,14 +20,18 @@ export default function StatusIndicator({ wsStatus, activeModel, mode }) {
 
   return (
     <div className={`${visibility} min-w-0 items-center gap-2`}>
-      <div className="flex min-h-9 items-center gap-2 rounded-xl border border-line bg-surface px-2.5 py-1.5">
+      <div
+        className="flex min-h-9 items-center gap-2 rounded-xl border border-line bg-surface px-2.5 py-1.5"
+        title={wsStatus === 'connected' ? 'Connected to the desktop server' : undefined}
+      >
         <span className="relative flex h-2 w-2" aria-hidden="true">
           {connecting && (
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
           )}
           <span className={`relative inline-flex h-2 w-2 rounded-full ${status.dot}`} />
         </span>
-        <span className="whitespace-nowrap text-[13px] font-semibold text-ink">
+        {/* Between 1024 and 1280px the bar only has room for the dot; the word stays for screen readers. */}
+        <span className="whitespace-nowrap text-[13px] font-semibold text-ink lg:max-xl:sr-only">
           {status.label}
         </span>
       </div>

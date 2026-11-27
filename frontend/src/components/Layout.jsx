@@ -18,6 +18,8 @@ const LAYOUT_KEY = 'badlovoice_layout_v2';
 const WIDE_QUERY = '(min-width: 1024px)';
 // From here up the responsive layout already is the three-column one.
 const ROOMY_QUERY = '(min-width: 1280px)';
+// Below this the phone header stacks into two rows (see index.css).
+const HEADER_ONE_ROW_QUERY = '(min-width: 768px)';
 
 function useMediaQuery(query) {
   const [matches, setMatches] = useState(() => {
@@ -216,6 +218,9 @@ export default function Layout({
 }) {
   const { layout, forcedDesktop, toggleDesktop, wide } = useLayoutMode();
   const roomy = useMediaQuery(ROOMY_QUERY);
+  const headerFitsOneRow = useMediaQuery(HEADER_ONE_ROW_QUERY);
+  // Stacked phone header: logo, theme and settings on the first row, the view switch on the second.
+  const stackedHeader = layout === 'phone' && !headerFitsOneRow;
   // On a roomy window the wide layout is what you already have, so the switch
   // would do nothing visible. Keep it reachable whenever it is switched on.
   const showLayoutToggle = forcedDesktop || !roomy || isNativeApp();
@@ -311,8 +316,8 @@ export default function Layout({
           <TabNav className="shell-tabs" tab={tab} onTabChange={onTabChange} />
 
           {/* DOM order follows the reading order of each layout, so Tab does too:
-              on the phone the theme and settings buttons sit on the first row. */}
-          {layout === 'phone' ? [quick, tools] : [tools, quick]}
+              in the stacked header the theme and settings buttons come first. */}
+          {stackedHeader ? [quick, tools] : [tools, quick]}
         </div>
       </header>
 
