@@ -205,7 +205,9 @@ class RobotEffect:
         n = len(x)
         phases = self._phase + 2.0 * np.pi * freq * np.arange(n) / self.sr
         self._phase = float((self._phase + 2.0 * np.pi * freq * n / self.sr) % (2.0 * np.pi))
-        return (x * np.sin(phases)).astype(np.float32)
+        # Same blend as the browser engine: keep some dry voice for clarity.
+        mix = _clipf(params.get("mix"), 0.0, 1.0, 0.75)
+        return (x * (1.0 - mix) + x * np.sin(phases) * mix * 1.3).astype(np.float32)
 
 
 class WhisperEffect:

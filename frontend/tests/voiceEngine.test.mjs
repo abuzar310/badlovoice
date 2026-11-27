@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { VoiceEngine, POST_CHAIN_ORDER } from '../public/voiceEngineCore.js';
-import { vowel, noise, rms, measureF0, envelopePeak, run } from './helpers.mjs';
+import { vowel, noise, rms, measureF0, envelopePeak, run, speechLike } from './helpers.mjs';
 
 const SR = 48000;
 const semis = (a, b) => 12 * Math.log2(a / b);
@@ -58,6 +58,52 @@ test('pitch tracker follows a gliding, noisy voice', () => {
     const src = measureF0(x, SR, a, b);
     const got = measureF0(y, SR, a + 1056, b + 1056, 60, 900);
     assert.ok(Math.abs(semis(got, src) - 7) < 0.4, `t=${t}: ${src.toFixed(1)} → ${got.toFixed(1)}`);
+  }
+});
+
+test('speech-like input: voiced frames land on the shifted pitch, not the original', () => {
+  for (const [f0Base, pitch] of [[100, 7], [100, -5], [140, 9], [220, -8], [220, 5]]) {
+    const { x, voiced, f0 } = speechLike(SR, 4, f0Base, 20);
+    const y = run(engine({ pitch, formant: pitch * 0.3 }), x);
+    const delay = Math.round(0.022 * SR);
+    const frame = Math.round(SR * 0.06);
+    let total = 0, hit = 0, leaked = 0;
+    for (let c = SR * 0.3; c + frame < x.length - SR * 0.1; c += Math.round(SR * 0.01)) {
+      if (!voiced[c] || !voiced[c + frame]) continue;
+      const got = measureF0(y, SR, c + delay, c + delay + frame + Math.round(SR * 0.045), 45, 900);
+      if (!got) continue;
+      const src = f0((c + frame / 2) / SR);
+      total++;
+      if (Math.abs(semis(got, src) - pitch) < 0.8) hit++;
+      else if (Math.abs(semis(got, src)) < 0.8) leaked++;
+    }
+    assert.ok(total > 25, `only ${total} frames measured`);
+    assert.ok(hit / total > 0.9, `f0 ${f0Base} shift ${pitch}: ${hit}/${total} frames on target`);
+    assert.ok(leaked / total < 0.03, `f0 ${f0Base} shift ${pitch}: ${leaked}/${total} frames leaked the original pitch`);
+  }
+});
+
+test('pitch tracker on speech-like input: finds voicing, no octave slips, ignores hiss', () => {
+  for (const f0Base of [95, 150, 250]) {
+    for (const snr of [30, 10]) {
+      const { x, voiced, f0 } = speechLike(SR, 4, f0Base, snr);
+      const e = engine({});
+      const out = new Float32Array(128);
+      let voicedSeen = 0, voicedTotal = 0, gross = 0;
+      for (let i = 0; i + 128 <= x.length; i += 128) {
+        e.process(x.subarray(i, i + 128), out);
+        const c = i - 1400; // the tracker's window is centred ~30 ms back
+        if (c < 2400 || !voiced[c] || !voiced[c - 2400]) continue;
+        voicedTotal++;
+        const hz = e.pitchHz;
+        if (hz > 0) {
+          voicedSeen++;
+          if (Math.abs(semis(hz, f0(c / SR))) > 3) gross++;
+        }
+      }
+      assert.ok(voicedSeen / voicedTotal > 0.97, `f0 ${f0Base} snr ${snr}: voiced ${voicedSeen}/${voicedTotal}`);
+      assert.ok(gross / voicedSeen < 0.02, `f0 ${f0Base} snr ${snr}: ${gross} gross errors`);
+    }
   }
 });
 
@@ -206,6 +252,16 @@ test('reverb and chorus keep level near unity', () => {
     const g = rms(run(engine({ effects: fx }), x), SR * 0.5, SR * 1.4) / ref;
     assert.ok(g > 0.4 && g < 1.8, `${Object.keys(fx)[0]} gain ${g.toFixed(2)}`);
   }
+});
+
+test('re-enabling echo does not replay stale audio', () => {
+  const e = engine({ effects: { echo: { enabled: true, time: 0.5, feedback: 0.6, mix: 0.5 } } });
+  run(e, vowel(SR, 0.5, 140)); // fill the delay line
+  e.setParams({ effects: { echo: { enabled: false } } });
+  run(e, new Float32Array(1280));
+  e.setParams({ effects: { echo: { enabled: true, time: 0.5, feedback: 0.6, mix: 0.5 } } });
+  const y = run(e, new Float32Array(SR));
+  assert.ok(peak(y) < 1e-6, `ghost echo peak ${peak(y)}`);
 });
 
 test('compressor narrows dynamic range', () => {

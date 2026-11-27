@@ -296,18 +296,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const checkActiveModel = async () => {
+    // Poll the server for its active model. On a static host (no API) back
+    // off to a slow heartbeat instead of hammering it every few seconds.
+    let timer = null;
+    let cancelled = false;
+    const check = async () => {
+      let delay = 5000;
       try {
         const active = await getActiveModel();
         setActiveModel(active?.name || active?.model || null);
       } catch {
-        // Server may not be ready yet.
+        delay = 30000;
       }
+      if (!cancelled) timer = setTimeout(check, delay);
     };
-
-    checkActiveModel();
-    const interval = setInterval(checkActiveModel, 5000);
-    return () => clearInterval(interval);
+    check();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {

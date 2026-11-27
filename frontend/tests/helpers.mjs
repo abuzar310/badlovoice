@@ -119,3 +119,39 @@ export function run(engine, input, block = 128) {
   }
   return out;
 }
+
+/**
+ * Speech-like test signal: syllables with attack/decay, drifting + jittery F0,
+ * moving formants, fricative bursts between syllables and background noise.
+ * Returns the signal, a per-sample "steady voiced" mask and the true F0(t).
+ */
+export function speechLike(sr, seconds, f0Base, snrDb = 25, seed = 7) {
+  const n = Math.round(sr * seconds);
+  let s = seed;
+  const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+  let jitter = 0;
+  const f0 = (t) => f0Base * (1.15 - 0.08 * (t % 1)) * (1 + 0.03 * Math.sin(t * 31));
+  const f0Jittered = (t) => {
+    jitter = (jitter + (rnd() - 0.5) * 0.004) * 0.999;
+    return f0(t) * (1 + jitter);
+  };
+  const a = vowel(sr, seconds, f0Jittered, [[700, 90], [1200, 110], [2600, 160]]);
+  jitter = 0;
+  s = seed;
+  const b = vowel(sr, seconds, f0Jittered, [[320, 70], [2300, 120], [3000, 180]]);
+  const hiss = noise(n, 1, seed + 1);
+  const x = new Float32Array(n);
+  const voiced = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const ph = (t * 3.3) % 1;
+    const env = ph < 0.08 ? ph / 0.08 : ph < 0.6 ? 1 : ph < 0.72 ? 1 - (ph - 0.6) / 0.12 : 0;
+    const blend = 0.5 + 0.5 * Math.sin(t * 2.1);
+    x[i] = (a[i] * blend + b[i] * (1 - blend)) * env;
+    if (ph > 0.15 && ph < 0.55) voiced[i] = 1;
+    if (ph > 0.74 && ph < 0.9) x[i] += hiss[i] * 0.05;
+  }
+  const floor = rms(x) / Math.pow(10, snrDb / 20);
+  for (let i = 0; i < n; i++) x[i] += hiss[(i * 7 + 13) % n] * floor;
+  return { x, voiced, f0 };
+}

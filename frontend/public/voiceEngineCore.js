@@ -184,6 +184,7 @@ class PitchFormantShifter {
     this.vibDepth = 0;
     this.vibPhase = 0;
 
+    this.bypass = false; // true = dry passthrough, pitch tracker keeps running
     this.active = false;
     this.mix = 0; // 0 = dry (bypass), 1 = shifted
     this.mixStep = 1 / (0.02 * sr);
@@ -213,6 +214,7 @@ class PitchFormantShifter {
   }
 
   _wanted() {
+    if (this.bypass) return false;
     return (
       Math.abs(this.pitchRatio - 1) > 0.003 ||
       Math.abs(this.formantRatio - 1) > 0.003 ||
@@ -474,6 +476,10 @@ class Robot {
     this.phase = 0;
   }
 
+  reset() {
+    this.phase = 0;
+  }
+
   process(buf, n, p) {
     const inc = (TWO_PI * clamp(p.freq, 10, 400, 90)) / this.sr;
     const mix = clamp(p.mix, 0, 1, 0.75);
@@ -520,6 +526,14 @@ class Whisper {
     this.seed = 0x2545f491;
   }
 
+  reset() {
+    for (let b = 0; b < this.bands; b++) {
+      this.ana[b].reset();
+      this.syn[b].reset();
+    }
+    this.env.fill(0);
+  }
+
   process(buf, n, p) {
     const mix = clamp(p.mix, 0, 1, 1);
     const { bands, ana, syn, env, gain, att, rel } = this;
@@ -556,6 +570,10 @@ class Telephone {
     ];
   }
 
+  reset() {
+    for (const stage of this.stages) stage.reset();
+  }
+
   process(buf, n) {
     const [a, b, c, d] = this.stages;
     for (let i = 0; i < n; i++) {
@@ -567,6 +585,10 @@ class Telephone {
 class Distortion {
   constructor(sr) {
     this.lpA = 1 - Math.exp((-TWO_PI * 6500) / sr);
+    this.lp = 0;
+  }
+
+  reset() {
     this.lp = 0;
   }
 
@@ -586,6 +608,11 @@ class Distortion {
 
 class Bitcrush {
   constructor() {
+    this.hold = 0;
+    this.count = 0;
+  }
+
+  reset() {
     this.hold = 0;
     this.count = 0;
   }
@@ -613,6 +640,10 @@ class Chorus {
     this.buf = new Float32Array(this.size);
     this.w = 0;
     this.phase = 0;
+  }
+
+  reset() {
+    this.buf.fill(0);
   }
 
   process(buf, n, p) {
@@ -656,6 +687,10 @@ class Echo {
     this.w = 0;
   }
 
+  reset() {
+    this.buf.fill(0);
+  }
+
   process(buf, n, p) {
     const delay = Math.max(1, Math.round(clamp(p.time, 0.03, 1.5, 0.25) * this.sr));
     const fb = clamp(p.feedback, 0, 0.9, 0.35);
@@ -685,6 +720,12 @@ class Reverb {
     this.combLp = new Float32Array(combs.length);
     this.apBuf = allpasses.map((d) => new Float32Array(Math.max(4, Math.round(d * scale))));
     this.apPos = new Int32Array(allpasses.length);
+  }
+
+  reset() {
+    for (const line of this.combBuf) line.fill(0);
+    for (const line of this.apBuf) line.fill(0);
+    this.combLp.fill(0);
   }
 
   process(buf, n, p) {
@@ -731,6 +772,11 @@ class Eq {
     this.highDb = null;
   }
 
+  reset() {
+    this.low.reset();
+    this.high.reset();
+  }
+
   process(buf, n, p) {
     const low = clamp(p.low, -15, 15, 0);
     const high = clamp(p.high, -15, 15, 0);
@@ -752,6 +798,10 @@ class Compressor {
   constructor(sr) {
     this.att = 1 - Math.exp(-1 / (0.005 * sr));
     this.rel = 1 - Math.exp(-1 / (0.09 * sr));
+    this.env = 0;
+  }
+
+  reset() {
     this.env = 0;
   }
 
@@ -812,6 +862,7 @@ export class VoiceEngine {
       compressor: new Compressor(sampleRate),
     };
     this.effects = {};
+    this.wasOn = {};
     this.enabled = true;
     this.pitch = 0;
     this.formant = 0;
@@ -853,32 +904,23 @@ export class VoiceEngine {
   process(input, output) {
     const n = input.length;
     if (output !== input) output.set(input);
-    if (!this.enabled) {
-      // Keep the pitch tracker alive so the UI can still read the speaker's F0.
-      const s = this.shifter;
-      const wantedBefore = s.pitchRatio;
-      const formantBefore = s.formantRatio;
-      const mono = s.monotoneHz;
-      const depth = s.vibDepth;
-      s.pitchRatio = 1;
-      s.formantRatio = 1;
-      s.monotoneHz = 0;
-      s.vibDepth = 0;
-      s.process(output, n);
-      s.pitchRatio = wantedBefore;
-      s.formantRatio = formantBefore;
-      s.monotoneHz = mono;
-      s.vibDepth = depth;
-      return;
-    }
-
+    // Disabled = dry passthrough; the pitch tracker keeps running so the UI
+    // can still read the speaker's pitch.
+    this.shifter.bypass = !this.enabled;
     this.shifter.process(output, n);
+    if (!this.enabled) return;
 
     const fx = this.effects;
+    const wasOn = this.wasOn;
     for (let k = 0; k < POST_CHAIN_ORDER.length; k++) {
       const key = POST_CHAIN_ORDER[k];
       const p = fx[key];
-      if (!p || !p.enabled) continue;
+      const on = Boolean(p && p.enabled);
+      // Switching an effect back on must not replay whatever was left in its
+      // delay lines from last time.
+      if (on && !wasOn[key] && this.fx[key]) this.fx[key].reset();
+      wasOn[key] = on;
+      if (!on) continue;
       if (key === 'gain') {
         const g = Math.pow(10, clamp(p.db, -24, 24, 0) / 20);
         for (let i = 0; i < n; i++) output[i] *= g;
