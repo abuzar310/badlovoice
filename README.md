@@ -1,8 +1,8 @@
 # BadloVoice
 
-**Realtime AI voice changer** for browser and Android — change your voice live for Discord, games, streams, or calls.
+**Realtime voice changer for the browser and Android, with optional AI voice models.**
 
-Local by default: mic → DSP / RVC / ONNX → speakers or WAV. Your audio stays on your machine.
+Change your voice live for Discord, games, streams or calls. The built-in engine runs on your device: no account, no upload, no server.
 
 <p align="center">
   <img src="frontend/public/favicon.svg" width="72" height="72" alt="BadloVoice logo" />
@@ -10,10 +10,9 @@ Local by default: mic → DSP / RVC / ONNX → speakers or WAV. Your audio stays
 
 <p align="center">
   <a href="#quick-start"><strong>Quick start</strong></a> ·
-  <a href="#why-badlovoice">Why</a> ·
-  <a href="#features">Features</a> ·
+    <a href="#features">Features</a> ·
   <a href="#android-apk">Android</a> ·
-  <a href="#virtual-cable-routing">Discord / VAC</a> ·
+  <a href="#send-your-voice-to-discord-obs-or-a-game">Discord / OBS</a> ·
   <a href="#contributing">Contribute</a>
 </p>
 
@@ -27,96 +26,84 @@ Local by default: mic → DSP / RVC / ONNX → speakers or WAV. Your audio stays
 </p>
 
 <p align="center">
-  <img src="docs/assets/simple-home.png" alt="BadloVoice Simple mode on phone — Start, pick a voice, pitch, record" width="360" />
+  <img src="docs/assets/studio-desktop.png" alt="BadloVoice studio on desktop: live spectrum, voice library, pitch and formant controls" width="820" />
 </p>
 
-<p align="center"><em>Simple mode (default): Start → pick a voice → talk. Pro mode unlocks the full studio.</em></p>
-
----
-
-## Why BadloVoice
-
-| You want… | BadloVoice |
-|-----------|------------|
-| Fast fun on phone | **Simple mode** — presets + pitch, no studio clutter |
-| Serious conversion | **Pro studio** — RVC / ONNX models, slots, DSP rack |
-| Discord / games | VAC routing guide built into the docs |
-| Privacy | Processing stays **local** (no cloud voice upload) |
-| Open source | **MIT** — fork, ship, contribute |
-
-Built by studying and merging patterns from [OpenVoiceChanger](https://github.com/sioaeko/OpenVoiceChanger), [w-okada/voice-changer](https://github.com/w-okada/voice-changer), [Vonovox](https://github.com/dr87/Vonovox), and [echidna](https://github.com/supermarsx/echidna). See [ATTRIBUTION.md](ATTRIBUTION.md).
-
-**Keywords:** realtime voice changer, RVC, AI voice conversion, Discord voice, Android voice changer, ONNX, local DSP.
+<p align="center">
+  <img src="docs/assets/studio-phone.png" alt="BadloVoice on a phone: Start, Record and quick voices on the first screen" width="300" />
+</p>
 
 ---
 
 ## Features
 
 | Area | What you get |
-|------|----------------|
-| **Simple mode** | Phone-first Start / voice presets / pitch / record (default UI) |
-| **Pro studio** | Devices, VU + spectrum, latency modes, full effects rack |
-| **Models** | Drag-drop `.pth` / `.pt` / `.onnx` + companion `.index` |
-| **Model slots** | Hot-swap slots (w-okada style) |
-| **DSP rack** | Gate, robot, whisper, telephone, distortion, bitcrush, chorus, echo, reverb, EQ, compressor |
-| **DSP-only** | Pitch + formant + effects with no checkpoint |
-| **RVC controls** | Pitch, formant, F0 (PM / Harvest / Crepe / RMVPE / FCPE), index, RMS, protect |
-| **Recorder** | Capture converted audio → download WAV |
-| **Offline convert** | Upload wav/mp3/flac/ogg/m4a → processed WAV |
-| **Android** | Capacitor debug APK (`npm run apk` in `frontend/`) |
+|------|--------------|
+| **Built-in voice engine** | Pitch and formant move independently, so a higher voice keeps a natural tone unless you ask for a chipmunk. Runs in the browser with about 22 ms of added latency. |
+| **24 voices** | Adult, teen, child and effect voices: Robot, Whisper, Monster, Alien, Cave and more. Voices that target a pitch aim from your own speaking pitch, which the app measures while you talk. |
+| **Effects rack** | Noise gate, robot, monotone, vibrato, whisper, telephone, distortion, bitcrush, chorus, echo, reverb, tone EQ, compressor, output gain. |
+| **Record** | Capture the changed voice and download it as WAV. |
+| **Convert a file** | Drop in a WAV, MP3, M4A, OGG or FLAC and get it back in the voice you set up. The file stays on your device. |
+| **Send to another app** | Choose a virtual cable as the output and Discord, OBS or a game hears the changed voice. |
+| **AI voice models (optional)** | Run the Python backend to load RVC (`.pth`) or ONNX models, with model slots, F0 methods (PM, Harvest, Crepe, RMVPE, FCPE), index and protect controls. |
+| **Android** | The same UI packaged as an APK with Capacitor. |
 
 ---
 
 ## Quick start
 
-### Requirements
+### Voice changer only (no Python)
 
-- Python 3.11+ recommended  
-- Node.js 20+  
-- Windows, macOS, or Linux  
-- Optional: NVIDIA GPU + CUDA for faster RVC/ONNX  
+You need Node.js 20 or newer.
 
-### 60-second try (desktop)
+```bash
+git clone https://github.com/abuzar310/badlovoice.git
+```
+
+```bash
+cd badlovoice/frontend
+```
+
+```bash
+npm install
+```
+
+```bash
+npm run dev
+```
+
+Open **http://127.0.0.1:5173**, press **Start voice**, allow the microphone and pick a voice. Put on headphones and tick **Hear myself** to listen. Without headphones the speakers feed back into the mic.
+
+### Add AI voice models (optional)
+
+You need Python 3.11 or newer. An NVIDIA GPU with CUDA makes RVC and ONNX models faster.
 
 ```powershell
-git clone https://github.com/abuzar310/badlovoice.git
-cd badlovoice
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1          # macOS/Linux: source .venv/bin/activate
 pip install -r backend/requirements.txt
 ```
 
-Terminal A — backend:
+Terminal A, the backend:
 
 ```powershell
 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-Terminal B — UI:
+Terminal B, the UI:
 
 ```powershell
 cd frontend
-npm install
 npm run dev
 ```
 
-Open **http://127.0.0.1:5173** → allow mic → **Start** → pick a voice → talk (headphones help).
-
-> Pitch / DSP presets work without an RVC model. For full RVC, add HuBERT + a `.pth` (see [docs/MODELS.md](docs/MODELS.md)).
-
-### Optional: RVC package + HuBERT
+Load a model on the **Models** tab and activate it. While a model is active the server produces the voice; with no model the browser engine does. See [docs/MODELS.md](docs/MODELS.md) for where models come from and what RVC needs (HuBERT at `models/assets/hubert_base.pt`, plus the RVC package):
 
 ```powershell
 pip install --no-deps git+https://github.com/RVC-Project/Retrieval-based-Voice-Conversion
 ```
 
-Place HuBERT at:
-
-```text
-models/assets/hubert_base.pt
-```
-
-### Production (UI served by FastAPI)
+### One process (UI served by FastAPI)
 
 ```powershell
 cd frontend
@@ -128,18 +115,27 @@ python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 
 Open http://127.0.0.1:8000
 
-### First voice change
+---
 
-1. Allow mic access.  
-2. **Simple:** Start → pick a voice → talk.  
-3. **Pro:** load an RVC/ONNX model under Models, or stay DSP-only.  
-4. Record WAV, or use **Converter** for whole files.  
+## Send your voice to Discord, OBS or a game
+
+Apps can only listen to a microphone, so the changed voice has to arrive on something that looks like one. A virtual audio cable does that.
+
+1. Install a virtual cable: [VAC](https://software.muzychenko.net/freeware/vac470lite.zip) or VB-Cable.
+2. In BadloVoice switch to **Studio** or **Advanced** view. Under **Devices** keep your real mic as the microphone and choose the cable (for example "Line 1") as the speaker.
+3. Press **Start voice**. The changed voice goes to the cable straight away.
+4. In Discord, OBS or the game, choose the same cable as the microphone.
+5. Tick **Hear myself** if you also want a copy on your own headphones.
+
+Choosing an output device needs a Chromium browser (Chrome or Edge). Set the mic and the cable to 48000 Hz where you can.
+
+With a GPU machine elsewhere on your network: run the backend there and open the UI from your gaming PC.
 
 ---
 
 ## Android APK
 
-Build a debug APK (Android SDK + Gradle required):
+Build a debug APK (Android SDK and Gradle required):
 
 ```powershell
 cd frontend
@@ -148,42 +144,54 @@ npm run apk
 
 Output: `frontend/android/app/build/outputs/apk/debug/`
 
-iOS needs a Mac + Xcode (`npm run mobile:sync:ios`).
+iOS needs a Mac and Xcode (`npm run mobile:sync:ios`).
 
 ---
 
-## Architecture
+## How it works
 
 ```text
-Browser / Capacitor WebView (React + AudioWorklet)
-    │  binary PCM frames + JSON settings
-    ▼
-FastAPI  /ws/audio
-    │  gate → model (RVC/ONNX) or pitch DSP → effect rack
-    ▼
-Playback + optional WAV recorder
+Microphone
+   │
+   ▼
+Noise gate ──► Built-in engine (AudioWorklet, on your device)
+   │              pitch + formant shifter ─► effects rack ─► limiter
+   │                                                          │
+   │   only while an AI model is active                       ▼
+   └──► FastAPI /ws/audio ─► RVC / ONNX model ─► effects ─► output bus
+                                                              │
+                                    speakers or virtual cable ┤
+                                    recorder (WAV)            ┘
 ```
+
+Exactly one source feeds the output bus at a time: the browser engine, or the server model when one is active.
 
 | Path | Role |
 |------|------|
-| `backend/` | FastAPI, WebSocket pipeline, models/slots/presets, DSP |
-| `frontend/` | BadloVoice UI + Capacitor Android |
-| `models/` | Your checkpoints + `assets/` (HuBERT, RMVPE, …) |
-| `data/` | Runtime presets/slots/profiles (gitignored) |
-| `docs/` | Models guide + screenshots |
+| `frontend/public/voiceEngineCore.js` | The voice engine: pitch tracker, pitch and formant shifter, effects. Plain JavaScript, no dependencies. |
+| `frontend/public/*Worklet.js` | AudioWorklet wrappers: engine, noise gate, server capture and playback |
+| `frontend/src/` | React UI |
+| `frontend/android/` | Capacitor Android project |
+| `mobile/` | Expo wrapper around the hosted site |
+| `backend/` | FastAPI: WebSocket audio, models, slots, presets, the same effects in Python |
+| `models/` | Your checkpoints and `assets/` (HuBERT, RMVPE) |
+| `data/` | Runtime presets, slots and profiles (not tracked) |
 
 ---
 
-## Virtual cable routing
+## Tests
 
-For Discord, games, or OBS:
+The engine has a test suite that runs in Node with no browser:
 
-1. Install [VAC](https://software.muzychenko.net/freeware/vac470lite.zip) (often stabler than VB-Cable).  
-2. Set mic + virtual line to **48000 Hz**, 1 ch, 16-bit when possible.  
-3. BadloVoice **input** = real mic · **output** = Line 1 (VAC).  
-4. In Discord/games, set microphone to Line 1.  
+```bash
+cd frontend
+```
 
-Remote GPU box: run the backend on the GPU machine; open the UI from your gaming PC.
+```bash
+npm test
+```
+
+It checks pitch accuracy across voices and sample rates, that formants stay put when only pitch moves, that the original pitch does not leak through on speech-like input, every effect for stability, and that the whole rack runs well above realtime.
 
 ---
 
@@ -207,13 +215,15 @@ See `backend/config.py` for the full list.
 
 ## Project scripts
 
+Run these from the repository root:
+
 ```powershell
-npm run dev       # frontend Vite
+npm run dev       # frontend dev server
 npm run build     # frontend production build
-npm run server    # uvicorn backend.main:app
+npm run server    # backend on 127.0.0.1:8000
 ```
 
-Drive upload helper (optional, needs your own OAuth client — never commit secrets):
+Drive upload helper (optional). It needs your own OAuth client; never commit the credentials:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\upload_apk_to_drive.py path\to\app.apk
@@ -223,7 +233,7 @@ Drive upload helper (optional, needs your own OAuth client — never commit secr
 
 ## Star the repo
 
-If BadloVoice helps you, **star the repo** — it helps others find a local, open voice changer.
+If BadloVoice helps you, **star the repo**. Stars help other people find a local, open voice changer.
 
 [![Star History Chart](https://api.star-history.com/svg?repos=abuzar310/badlovoice&type=Date)](https://star-history.com/#abuzar310/badlovoice&Date)
 
@@ -231,7 +241,7 @@ If BadloVoice helps you, **star the repo** — it helps others find a local, ope
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 Upstream OpenVoiceChanger is MIT (Sioaeko). Other projects contributed design patterns; see [ATTRIBUTION.md](ATTRIBUTION.md).
 
@@ -246,6 +256,6 @@ Upstream OpenVoiceChanger is MIT (Sioaeko). Other projects contributed design pa
 
 ## Contributing
 
-Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Good first areas: Simple UI polish, DSP presets, docs, Android packaging, Windows install scripts.
+Good first areas: new voices and effects, phone layout, docs, Android packaging, install scripts for macOS and Linux.

@@ -1,6 +1,6 @@
 # Attribution
 
-Shiftbooth merges ideas and MIT-licensed code from open-source voice changers.
+BadloVoice (first developed as Shiftbooth) merges ideas and MIT-licensed code from open-source voice changers.
 
 ## OpenVoiceChanger (primary architecture)
 
@@ -26,6 +26,7 @@ Shiftbooth merges ideas and MIT-licensed code from open-source voice changers.
 - Used conceptually: latency modes (ultra/balanced/quality), settings profiles, DSP telemetry framing
 - Android Zygisk/LSPosed system hooks are out of scope for this desktop/web product
 
-## Brand / browser shell
+## Original to this repository
 
-- Shiftbooth UI identity and original Web Audio demo tools in this repository
+- The in-browser voice engine (`frontend/public/voiceEngineCore.js`): pitch tracker, pitch-synchronous pitch and formant shifter, and the JavaScript effects rack
+- BadloVoice UI identity and the voice library
