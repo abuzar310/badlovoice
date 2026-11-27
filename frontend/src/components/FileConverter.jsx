@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { convertFile } from '../lib/api';
 import { countActiveEffects } from '../lib/effects';
 import { renderFileLocally } from '../lib/voiceEngine';
+import { recordingFile, saveMode, shareRecording } from '../lib/saveRecording';
 
 const ACCEPTED = '.wav,.mp3,.flac,.ogg,.m4a,.aiff,audio/*';
 
@@ -26,6 +27,7 @@ export default function FileConverter({ voice, effects, activeModel, gate }) {
   const [result, setResult] = useState(null); // {url, name, size}
   const [error, setError] = useState(null);
   const [dragActive, setDragActive] = useState(false);
+  const mode = useMemo(saveMode, []);
 
   const fxCount = countActiveEffects(effects, voice.formant);
   const viaModel = useModel && Boolean(activeModel);
@@ -62,12 +64,21 @@ export default function FileConverter({ voice, effects, activeModel, gate }) {
       const name = `${file.name.replace(/\.[^.]+$/, '')}_converted.wav`;
       setResult((prev) => {
         if (prev?.url) URL.revokeObjectURL(prev.url);
-        return { url: URL.createObjectURL(blob), name, size: blob.size };
+        return { url: URL.createObjectURL(blob), blob, name, size: blob.size, mime: 'audio/wav' };
       });
     } catch (err) {
       setError(err.message || 'Could not convert that file.');
     } finally {
       setConverting(false);
+    }
+  };
+
+  const handleShare = async () => {
+    setError(null);
+    try {
+      await shareRecording(await recordingFile(result, result.name), mode);
+    } catch (err) {
+      setError(err.message || 'Could not share the file.');
     }
   };
 
@@ -192,9 +203,18 @@ export default function FileConverter({ voice, effects, activeModel, gate }) {
                 {formatSize(result.size)}
               </span>
             </p>
-            <a href={result.url} download={result.name} className="chip-button !text-ink">
-              Download WAV
-            </a>
+            <div className="flex flex-wrap items-center gap-2">
+              {mode !== 'download' && (
+                <button type="button" onClick={handleShare} className="chip-button !text-ink">
+                  Share
+                </button>
+              )}
+              {(mode === 'download' || mode === 'share') && (
+                <a href={result.url} download={result.name} className="chip-button !text-ink">
+                  Download WAV
+                </a>
+              )}
+            </div>
           </div>
           <audio controls src={result.url} className="mt-3 h-10 w-full" />
         </div>

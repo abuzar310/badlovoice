@@ -60,6 +60,7 @@ export default function useAudioPipeline(wsHook) {
   const [engineLatencyMs, setEngineLatencyMs] = useState(0);
   const gateParamsRef = useRef({ enabled: false, thresholdDb: -56, holdMs: 280 });
   const recordProcessorRef = useRef(null);
+  const wakeLockRef = useRef(null);
   const listenModeRef = useRef('local'); // local | rvc
   // Speakers + mic = feedback. Default off; user opts in (headphones).
   const hearMyselfRef = useRef(false);
@@ -421,6 +422,18 @@ export default function useAudioPipeline(wsHook) {
           }
         });
 
+        // Keep the screen on while live: a locked phone stops the mic.
+        // The browser drops the lock when the tab is hidden, so take it again.
+        const keepAwake = () => {
+          if (document.visibilityState !== 'visible' || !navigator.wakeLock) return;
+          navigator.wakeLock.request('screen').then((lock) => {
+            wakeLockRef.current = lock;
+          }).catch(() => {});
+        };
+        keepAwake();
+        document.addEventListener('visibilitychange', keepAwake);
+        wakeLockRef.keepAwake = keepAwake;
+
         await audioContext.resume();
         animFrameRef.current = requestAnimationFrame(updateLevels);
         setIsRunning(true);
@@ -428,7 +441,7 @@ export default function useAudioPipeline(wsHook) {
         console.error('Failed to start audio pipeline:', err);
         stop();
         if (err.name === 'NotAllowedError') {
-          throw new Error('Microphone permission denied. Allow mic access and try again.');
+          throw new Error('Microphone access is blocked. Allow it in your browser or phone settings for this app, then press Start again.');
         }
         if (err.name === 'NotFoundError') {
           throw new Error('No microphone found.');
@@ -463,6 +476,7 @@ export default function useAudioPipeline(wsHook) {
     const blob = encodeWav(chunks, sampleRateRef.current);
     const recording = {
       url: URL.createObjectURL(blob),
+      blob,
       seconds: samples / sampleRateRef.current,
       size: blob.size,
       mime: 'audio/wav',
@@ -535,6 +549,13 @@ export default function useAudioPipeline(wsHook) {
     monitorGainRef.current = null;
     sinkAppliedRef.current = false;
     setSendingToDevice(false);
+
+    if (wakeLockRef.keepAwake) {
+      document.removeEventListener('visibilitychange', wakeLockRef.keepAwake);
+      wakeLockRef.keepAwake = null;
+    }
+    wakeLockRef.current?.release().catch(() => {});
+    wakeLockRef.current = null;
 
     streamRef.current?.getTracks().forEach((track) => track.stop());
     audioContextRef.current?.close().catch(() => {});
