@@ -71,13 +71,13 @@ function LevelMeter({ label, value, tone = 'mic' }) {
   const pct = Math.min(100, Math.max(0, Number(value) || 0));
   return (
     <div className="min-w-0 flex-1">
-      <div className="mb-1 flex items-center justify-between text-[11px] text-[color:var(--muted)]">
+      <div className="mb-1 flex items-center justify-between text-[11px] text-muted">
         <span>{label}</span>
         <span className="tabular-nums">{Math.round(pct)}%</span>
       </div>
       <div className="level-track h-1.5">
         <div
-          className={`level-fill ${tone === 'out' ? 'bg-[color:var(--accent)]' : 'bg-[color:var(--mic)]'}`}
+          className={`level-fill ${tone === 'out' ? 'bg-accent' : 'bg-mic'}`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -97,11 +97,11 @@ function VoiceCard({ profile, selected, pitch, onSelect }) {
         <span className="voice-chip-name block text-sm font-semibold tracking-tight">
           {profile.name}
         </span>
-        <span className="shrink-0 font-mono text-[10px] tabular-nums text-[color:var(--accent-soft)]">
+        <span className="shrink-0 font-mono text-[10px] tabular-nums text-accent-soft">
           {pitch > 0 ? `+${pitch}` : pitch}
         </span>
       </span>
-      <span className="mt-0.5 block text-xs text-[color:var(--muted)]">{profile.blurb}</span>
+      <span className="mt-0.5 block text-xs text-muted">{profile.blurb}</span>
     </button>
   );
 }
@@ -271,7 +271,7 @@ export default function StudioPage({
         {/* LEFT — Voice library */}
         <aside className="panel flex max-h-[70vh] flex-col overflow-hidden p-3 xl:max-h-[calc(100svh-11rem)] order-3 lg:order-1">
           <div className="mb-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
               Voice library
             </p>
             <input
@@ -279,7 +279,7 @@ export default function StudioPage({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search voices"
-              className="mt-2 min-h-10 w-full rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 text-sm outline-none focus-visible:border-[color:var(--accent)]/50"
+              className="mt-2 min-h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm outline-none focus-visible:border-accent/50"
             />
             <div className="mt-2 flex flex-wrap gap-1.5">
               {GROUPS.map((g) => (
@@ -289,8 +289,8 @@ export default function StudioPage({
                   onClick={() => setGroup(g)}
                   className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                     group === g
-                      ? 'bg-[color:var(--accent)]/15 text-[color:var(--accent-soft)]'
-                      : 'bg-[color:var(--surface-2)]/50 text-[color:var(--muted)] hover:text-[color:var(--ink-text)]'
+                      ? 'bg-accent/15 text-accent-soft'
+                      : 'bg-surface-2/50 text-muted hover:text-ink'
                   }`}
                 >
                   {g}
@@ -300,8 +300,8 @@ export default function StudioPage({
           </div>
 
           {!isSimple && recentProfiles.length > 0 && (
-            <div className="mb-3 border-b border-[color:var(--line)] pb-3">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted)]">
+            <div className="mb-3 border-b border-line pb-3">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
                 Recent
               </p>
               <div className="flex flex-wrap gap-1.5">
@@ -312,8 +312,8 @@ export default function StudioPage({
                     onClick={() => handleSelectProfile(p)}
                     className={`rounded-lg border px-2 py-1 text-xs font-medium ${
                       activePresetId === p.id
-                        ? 'border-[color:var(--accent)]/50 text-[color:var(--accent-soft)]'
-                        : 'border-[color:var(--line)] text-[color:var(--muted)]'
+                        ? 'border-accent/50 text-accent-soft'
+                        : 'border-line text-muted'
                     }`}
                   >
                     {p.name}
@@ -337,7 +337,7 @@ export default function StudioPage({
               );
             })}
             {filtered.length === 0 && (
-              <p className="px-1 py-6 text-center text-sm text-[color:var(--muted)]">
+              <p className="px-1 py-6 text-center text-sm text-muted">
                 No voices match.
               </p>
             )}
@@ -349,7 +349,7 @@ export default function StudioPage({
           <div className="panel relative flex min-h-[280px] flex-1 flex-col overflow-hidden p-4 sm:min-h-[340px]">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
                   Live
                 </p>
                 <h2 className="font-display text-lg font-bold tracking-tight">
@@ -361,7 +361,7 @@ export default function StudioPage({
               >
                 <span
                   className={`h-2 w-2 rounded-full ${
-                    live ? 'bg-[color:var(--accent)] rec-blink' : 'bg-[color:var(--ink-text)]/25'
+                    live ? 'bg-accent rec-blink' : 'bg-ink/25'
                   }`}
                 />
                 {live ? 'LIVE' : 'Ready'}
@@ -376,10 +376,10 @@ export default function StudioPage({
               />
               {!live && (
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
-                  <p className="font-display text-xl font-bold tracking-tight text-[color:var(--ink-text)] sm:text-2xl">
+                  <p className="font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">
                     Ready to transform your voice
                   </p>
-                  <p className="mt-2 max-w-sm text-sm text-[color:var(--muted)]">
+                  <p className="mt-2 max-w-sm text-sm text-muted">
                     Select a voice and press Start
                   </p>
                 </div>
@@ -388,10 +388,10 @@ export default function StudioPage({
 
             {live && !hearMyself && !pipeline.sendingToDevice && (
               <div
-                className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2"
+                className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2"
                 role="status"
               >
-                <p className="text-sm text-[color:var(--ink-text)]">
+                <p className="text-sm text-ink">
                   You are live, but the speakers are muted. Put on headphones to listen.
                 </p>
                 <button type="button" className="chip-button" onClick={() => handleHearMyself(true)}>
@@ -405,13 +405,13 @@ export default function StudioPage({
                 <LevelMeter label="Input" value={pipeline.inputLevel} />
                 <LevelMeter label="Output" value={pipeline.outputLevel} tone="out" />
                 <div className="shrink-0 text-right">
-                  <p className="text-[11px] text-[color:var(--muted)]">Latency</p>
+                  <p className="text-[11px] text-muted">Latency</p>
                   <p className="font-mono text-sm font-semibold tabular-nums">
                     {shownLatency > 0 ? `${Math.round(shownLatency)} ms` : '—'}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="text-[11px] text-[color:var(--muted)]">Your pitch</p>
+                  <p className="text-[11px] text-muted">Your pitch</p>
                   <p className="font-mono text-sm font-semibold tabular-nums">
                     {pipeline.voicePitchHz > 0 ? `${pipeline.voicePitchHz} Hz` : '—'}
                   </p>
@@ -449,7 +449,7 @@ export default function StudioPage({
           </div>
 
           <div className="panel p-3">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
               Quick voices
             </p>
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -461,8 +461,8 @@ export default function StudioPage({
                   aria-pressed={quickId === p.id || activePresetId === p.profileId}
                   className={`min-h-11 shrink-0 rounded-xl border px-3.5 py-2 text-sm font-semibold transition ${
                     quickId === p.id || activePresetId === p.profileId
-                      ? 'border-[color:var(--accent)]/50 bg-[color:var(--accent)]/12 text-[color:var(--accent-soft)]'
-                      : 'border-[color:var(--line)] bg-[color:var(--surface)] text-[color:var(--ink-text)] hover:border-[color:var(--ink-text)]/25'
+                      ? 'border-accent/50 bg-accent/12 text-accent-soft'
+                      : 'border-line bg-surface text-ink hover:border-ink/25'
                   }`}
                 >
                   {p.label}
@@ -471,18 +471,18 @@ export default function StudioPage({
             </div>
           </div>
 
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2.5">
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface px-3 py-2.5">
             <input
               type="checkbox"
-              className="mt-1 h-4 w-4 accent-[color:var(--accent)]"
+              className="mt-1 h-4 w-4 accent-accent"
               checked={hearMyself}
               onChange={(e) => handleHearMyself(e.target.checked)}
             />
             <span className="min-w-0">
-              <span className="block text-sm font-semibold text-[color:var(--ink-text)]">
+              <span className="block text-sm font-semibold text-ink">
                 Hear myself
               </span>
-              <span className="mt-0.5 block text-xs text-[color:var(--muted)]">
+              <span className="mt-0.5 block text-xs text-muted">
                 {pipeline.sendingToDevice
                   ? hearMyself
                     ? 'Sending to your chosen output and playing a copy on your default speakers.'
@@ -496,10 +496,10 @@ export default function StudioPage({
 
           {error && (
             <div
-              className="rounded-xl border border-[color:var(--danger)]/30 bg-[color:var(--danger)]/10 p-3"
+              className="rounded-xl border border-danger/30 bg-danger/10 p-3"
               role="alert"
             >
-              <p className="text-sm text-[color:var(--danger-soft)]">{error}</p>
+              <p className="text-sm text-danger-soft">{error}</p>
             </div>
           )}
         </section>
@@ -517,14 +517,14 @@ export default function StudioPage({
           <div className="panel p-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
                   Your voice
                 </p>
                 <p className="mt-1 text-sm">
                   <span className="font-mono font-semibold tabular-nums">
                     {Math.round(hostPitch?.hz || 0)} Hz
                   </span>{' '}
-                  <span className="text-xs text-[color:var(--muted)]">
+                  <span className="text-xs text-muted">
                     {hostPitch?.measured ? 'measured' : 'assumed until you talk'}
                   </span>
                 </p>
@@ -533,7 +533,7 @@ export default function StudioPage({
                 Match my voice
               </button>
             </div>
-            <p className="mt-2 text-xs text-[color:var(--muted)]" aria-live="polite">
+            <p className="mt-2 text-xs text-muted" aria-live="polite">
               {calibrateNote ||
                 'Voices like Female or Deep aim for a target pitch, measured from how you really speak.'}
             </p>
@@ -541,7 +541,7 @@ export default function StudioPage({
 
           {!isSimple && (
             <div className="panel p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
                 Devices
               </p>
               <div className="mt-2 space-y-2">
@@ -549,7 +549,7 @@ export default function StudioPage({
                   value={selectedInput}
                   onChange={(e) => setSelectedInput(e.target.value)}
                   disabled={live}
-                  className="native-select-safe min-h-10 w-full rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 text-sm disabled:opacity-50"
+                  className="native-select-safe min-h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm disabled:opacity-50"
                 >
                   <option value="">Default microphone</option>
                   {devices.inputDevices.map((d) => (
@@ -562,7 +562,7 @@ export default function StudioPage({
                   value={selectedOutput}
                   onChange={(e) => setSelectedOutput(e.target.value)}
                   disabled={live}
-                  className="native-select-safe min-h-10 w-full rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 text-sm disabled:opacity-50"
+                  className="native-select-safe min-h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm disabled:opacity-50"
                 >
                   <option value="">Default speaker</option>
                   {devices.outputDevices.map((d) => (
@@ -573,7 +573,7 @@ export default function StudioPage({
                 </select>
               </div>
               <fieldset className="mt-3 space-y-2" disabled={live}>
-                <legend className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
+                <legend className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
                   Mic clean-up
                 </legend>
                 {MIC_OPTIONS.map((opt) => (
@@ -583,20 +583,20 @@ export default function StudioPage({
                   >
                     <input
                       type="checkbox"
-                      className="mt-0.5 h-4 w-4 accent-[color:var(--accent)]"
+                      className="mt-0.5 h-4 w-4 accent-accent"
                       checked={Boolean(extras?.[opt.key])}
                       onChange={(e) => onExtrasChange({ [opt.key]: e.target.checked })}
                     />
                     <span className="min-w-0">
-                      <span className="block text-sm font-medium text-[color:var(--ink-text)]">
+                      <span className="block text-sm font-medium text-ink">
                         {opt.label}
                       </span>
-                      <span className="block text-xs text-[color:var(--muted)]">{opt.hint}</span>
+                      <span className="block text-xs text-muted">{opt.hint}</span>
                     </span>
                   </label>
                 ))}
                 {live && (
-                  <p className="text-xs text-[color:var(--muted)]">Stop to change these.</p>
+                  <p className="text-xs text-muted">Stop to change these.</p>
                 )}
               </fieldset>
             </div>
@@ -609,10 +609,10 @@ export default function StudioPage({
         <section className="panel p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
                 Effects
               </p>
-              <p className="mt-0.5 text-sm text-[color:var(--muted)]">
+              <p className="mt-0.5 text-sm text-muted">
                 {modelActive
                   ? 'Applied on the server after the AI model'
                   : 'All effects run live on this device — no server needed'}
@@ -653,8 +653,8 @@ export default function StudioPage({
                   }}
                   className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
                     on
-                      ? 'border-[color:var(--accent)]/45 bg-[color:var(--accent)]/12 text-[color:var(--accent-soft)]'
-                      : 'border-[color:var(--line)] text-[color:var(--muted)]'
+                      ? 'border-accent/45 bg-accent/12 text-accent-soft'
+                      : 'border-line text-muted'
                   }`}
                 >
                   {item.label}
@@ -716,57 +716,57 @@ export default function StudioPage({
       {/* Bottom status bar */}
       <div className="studio-status-bar">
         <div className="mx-auto flex w-full max-w-[1560px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 text-xs sm:px-6 lg:px-8">
-          <span className={`inline-flex items-center gap-1.5 font-semibold ${live ? 'text-[color:var(--accent-soft)]' : 'text-[color:var(--muted)]'}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-[color:var(--accent)] rec-blink' : 'bg-[color:var(--ink-text)]/30'}`} />
+          <span className={`inline-flex items-center gap-1.5 font-semibold ${live ? 'text-accent-soft' : 'text-muted'}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-accent rec-blink' : 'bg-ink/30'}`} />
             {live ? 'LIVE' : 'IDLE'}
           </span>
-          <span className="text-[color:var(--muted)]">
+          <span className="text-muted">
             Mic{' '}
-            <strong className="font-medium text-[color:var(--ink-text)]">
+            <strong className="font-medium text-ink">
               {devices.inputDevices.find((d) => d.deviceId === selectedInput)?.label || 'Default'}
             </strong>
           </span>
-          <span className="text-[color:var(--muted)]">
+          <span className="text-muted">
             Speaker{' '}
-            <strong className="font-medium text-[color:var(--ink-text)]">
+            <strong className="font-medium text-ink">
               {devices.outputDevices.find((d) => d.deviceId === selectedOutput)?.label || 'Default'}
             </strong>
           </span>
-          <span className="text-[color:var(--muted)]">
+          <span className="text-muted">
             Latency{' '}
-            <strong className="font-mono font-medium text-[color:var(--ink-text)]">
+            <strong className="font-mono font-medium text-ink">
               {shownLatency > 0 ? `${Math.round(shownLatency)}ms` : '—'}
             </strong>
             {serverMs > 0 ? (
               <span className="ml-1 opacity-70">· srv {Math.round(serverMs)}ms</span>
             ) : null}
           </span>
-          <span className="text-[color:var(--muted)]">
+          <span className="text-muted">
             Model{' '}
-            <strong className="font-medium text-[color:var(--ink-text)]">
+            <strong className="font-medium text-ink">
               {modelActive ? activeModel : 'Built-in engine'}
             </strong>
           </span>
-          <span className="text-[color:var(--muted)]">
+          <span className="text-muted">
             DSP{' '}
-            <strong className="font-medium text-[color:var(--ink-text)]">
+            <strong className="font-medium text-ink">
               {dspActive > 0 ? `${dspActive} on` : 'off'}
             </strong>
           </span>
-          <span className="text-[color:var(--muted)]">
+          <span className="text-muted">
             Server{' '}
-            <strong className="font-medium text-[color:var(--ink-text)]">
+            <strong className="font-medium text-ink">
               {wsStatus === 'connected' ? 'connected' : 'not needed'}
             </strong>
           </span>
           {pipeline.isRecording && (
-            <span className="ml-auto font-mono font-semibold text-[color:var(--danger-soft)]">
+            <span className="ml-auto font-mono font-semibold text-danger-soft">
               ● REC {Math.floor((pipeline.recordSeconds || 0) / 60)}:
               {String(Math.floor((pipeline.recordSeconds || 0) % 60)).padStart(2, '0')}
             </span>
           )}
           {!pipeline.isRecording && runtimeConfig?.sampleRate && (
-            <span className="ml-auto text-[color:var(--muted)]">
+            <span className="ml-auto text-muted">
               {modelActive ? `${runtimeConfig.sampleRate} Hz · mode ${serverStats?.mode || 'model'}` : 'On-device'}
             </span>
           )}

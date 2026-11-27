@@ -73,7 +73,7 @@ export default function FileConverter({ voice, effects, activeModel, gate }) {
 
   return (
     <section className="panel p-5 sm:p-6">
-      <p className="text-sm text-[color:var(--muted)]">
+      <p className="text-sm text-muted">
         Voice in use: pitch {signed(voice.pitch)} st, formant {signed(voice.formant)} st,{' '}
         {fxCount} effect{fxCount === 1 ? '' : 's'}
         {viaModel ? `, AI model ${activeModel}` : ''}. Change it on the Studio tab.
@@ -93,10 +93,10 @@ export default function FileConverter({ voice, effects, activeModel, gate }) {
           event.preventDefault();
           setDragActive(false);
         }}
-        className={`mt-4 block cursor-pointer rounded-2xl border border-dashed p-8 text-center transition-colors duration-200 focus-within:border-[color:var(--accent)] focus-within:ring-2 focus-within:ring-[color:var(--accent)]/30 ${
+        className={`mt-4 block cursor-pointer rounded-2xl border border-dashed p-8 text-center transition-colors duration-200 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30 ${
           dragActive
-            ? 'border-[color:var(--accent)] bg-[color:var(--accent)]/10 drag-active'
-            : 'border-[color:var(--ink-text)]/25 bg-[color:var(--surface)] hover:border-[color:var(--ink-text)]/45'
+            ? 'border-accent bg-accent/10 drag-active'
+            : 'border-ink/25 bg-surface hover:border-ink/45'
         }`}
       >
         <input
@@ -109,7 +109,7 @@ export default function FileConverter({ voice, effects, activeModel, gate }) {
           className="sr-only"
         />
         <svg
-          className="mx-auto mb-3 h-9 w-9 text-[color:var(--muted)]"
+          className="mx-auto mb-3 h-9 w-9 text-muted"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -124,19 +124,19 @@ export default function FileConverter({ voice, effects, activeModel, gate }) {
         </svg>
         {file ? (
           <>
-            <span className="block break-all text-sm font-medium text-[color:var(--ink-text)]">
+            <span className="block break-all text-sm font-medium text-ink">
               {file.name}
             </span>
-            <span className="mt-1 block text-xs text-[color:var(--muted)]">
+            <span className="mt-1 block text-xs text-muted">
               {formatSize(file.size)} · choose another file
             </span>
           </>
         ) : (
           <>
-            <span className="block text-sm font-medium text-[color:var(--ink-text)]">
+            <span className="block text-sm font-medium text-ink">
               {dragActive ? 'Drop the file here' : 'Choose an audio file, or drop one here'}
             </span>
-            <span className="mt-1 block text-xs text-[color:var(--muted)]">
+            <span className="mt-1 block text-xs text-muted">
               WAV, MP3, M4A, OGG or FLAC
             </span>
           </>
@@ -145,17 +145,17 @@ export default function FileConverter({ voice, effects, activeModel, gate }) {
 
       <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         {activeModel ? (
-          <label className="flex items-center gap-2.5 text-sm text-[color:var(--ink-text)]">
+          <label className="flex items-center gap-2.5 text-sm text-ink">
             <input
               type="checkbox"
               checked={useModel}
               onChange={(event) => setUseModel(event.target.checked)}
-              className="h-4 w-4 accent-[color:var(--accent)]"
+              className="h-4 w-4 accent-accent"
             />
             <span className="min-w-0 break-words">Use the AI model ({activeModel})</span>
           </label>
         ) : (
-          <p className="text-sm text-[color:var(--muted)]">Converts on this device. Nothing is uploaded.</p>
+          <p className="text-sm text-muted">Converts on this device. Nothing is uploaded.</p>
         )}
 
         <button
@@ -169,30 +169,30 @@ export default function FileConverter({ voice, effects, activeModel, gate }) {
       </div>
 
       {converting && viaModel && (
-        <p className="mt-3 text-xs text-[color:var(--muted)]" role="status">
+        <p className="mt-3 text-xs text-muted" role="status">
           Long files take a while: the whole file runs through the model on the server.
         </p>
       )}
 
       {error && (
         <div
-          className="mt-4 rounded-2xl border border-[color:var(--danger)]/30 bg-[color:var(--danger)]/10 p-3.5"
+          className="mt-4 rounded-2xl border border-danger/30 bg-danger/10 p-3.5"
           role="alert"
         >
-          <p className="text-sm text-[color:var(--danger-soft)]">{error}</p>
+          <p className="text-sm text-danger-soft">{error}</p>
         </div>
       )}
 
       {result && (
-        <div className="mt-5 rounded-2xl border border-[color:var(--success)]/35 bg-[color:var(--success)]/10 p-4">
+        <div className="mt-5 rounded-2xl border border-success/35 bg-success/10 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="min-w-0 break-all text-sm font-medium text-[color:var(--ink-text)]">
+            <p className="min-w-0 break-all text-sm font-medium text-ink">
               {result.name}{' '}
-              <span className="text-xs font-normal text-[color:var(--muted)]">
+              <span className="text-xs font-normal text-muted">
                 {formatSize(result.size)}
               </span>
             </p>
-            <a href={result.url} download={result.name} className="chip-button !text-[color:var(--ink-text)]">
+            <a href={result.url} download={result.name} className="chip-button !text-ink">
               Download WAV
             </a>
           </div>

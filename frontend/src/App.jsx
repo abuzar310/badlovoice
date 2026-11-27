@@ -503,7 +503,7 @@ export default function App() {
   const headerActions = (
     <button
       onClick={() => setIsSettingsOpen(true)}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] text-[color:var(--muted)] transition hover:border-[color:var(--ink-text)]/20 hover:text-[color:var(--ink-text)]"
+      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface text-muted transition hover:border-ink/20 hover:text-ink"
       title="Session settings"
       aria-label="Open settings"
     >
@@ -565,34 +565,34 @@ export default function App() {
       {tab === 'models' && (
         <div className="mx-auto max-w-4xl space-y-4 animate-fade-in-up pb-8">
           <header className="panel p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
               Models
             </p>
             <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">
               Voice model manager
             </h1>
-            <p className="mt-1 max-w-2xl text-sm text-[color:var(--muted)]">
+            <p className="mt-1 max-w-2xl text-sm text-muted">
               Load RVC (.pth) or ONNX voices, activate one for live conversion, then return to Studio and Start.
             </p>
             <div className="mt-4 flex flex-wrap gap-3 text-sm">
-              <div className="rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--muted)]">Active</p>
+              <div className="rounded-xl border border-line bg-surface px-3 py-2">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-muted">Active</p>
                 <p className="font-semibold">{activeModel || 'None · built-in voice engine'}</p>
               </div>
-              <div className="rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--muted)]">Torch</p>
+              <div className="rounded-xl border border-line bg-surface px-3 py-2">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-muted">Torch</p>
                 <p className="font-semibold">
                   {runtimeConfig.runtime?.torch?.available ? 'Ready' : 'Unavailable'}
                 </p>
               </div>
-              <div className="rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--muted)]">ONNX</p>
+              <div className="rounded-xl border border-line bg-surface px-3 py-2">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-muted">ONNX</p>
                 <p className="font-semibold">
                   {runtimeConfig.runtime?.onnx?.available ? 'Ready' : 'Unavailable'}
                 </p>
               </div>
-              <div className="rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--muted)]">Sample rate</p>
+              <div className="rounded-xl border border-line bg-surface px-3 py-2">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-muted">Sample rate</p>
                 <p className="font-semibold">{runtimeConfig.sampleRate} Hz</p>
               </div>
             </div>
@@ -616,13 +616,13 @@ export default function App() {
       {tab === 'converter' && (
         <div className="mx-auto max-w-3xl animate-fade-in-up pb-8">
           <header className="mb-4 panel p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted)]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
               Converter
             </p>
             <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">
               Convert an audio file
             </h1>
-            <p className="mt-1 text-sm text-[color:var(--muted)]">
+            <p className="mt-1 text-sm text-muted">
               Change the voice in a recording you already have. Uses the voice you set up on the
               Studio tab.
             </p>
